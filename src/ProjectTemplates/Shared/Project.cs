@@ -1,29 +1,23 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
-using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.AspNetCore.Internal;
-using Microsoft.AspNetCore.Testing;
+using Microsoft.AspNetCore.InternalTesting;
 using Microsoft.Extensions.CommandLineUtils;
 using Microsoft.Extensions.Logging;
-using Xunit;
 using Xunit.Abstractions;
 using Xunit.Sdk;
-using static Templates.Test.Helpers.ProcessLock;
 
 namespace Templates.Test.Helpers;
 
 [DebuggerDisplay("{ToString(),nq}")]
 public class Project : IDisposable
 {
+    private const string _urlsNoHttps = "http://127.0.0.1:0";
     private const string _urls = "http://127.0.0.1:0;https://127.0.0.1:0";
 
     public static string ArtifactsLogDir
@@ -57,7 +51,7 @@ public class Project : IDisposable
     public string TemplateOutputDir { get; set; }
     public string TargetFramework { get; set; } = GetAssemblyMetadata("Test.DefaultTargetFramework");
     public string RuntimeIdentifier { get; set; } = string.Empty;
-    public static DevelopmentCertificate DevCert { get; } = DevelopmentCertificate.Create(AppContext.BaseDirectory);
+    public static DevelopmentCertificate DevCert { get; } = DevelopmentCertificate.Get(typeof(Project).Assembly);
 
     public string TemplateBuildDir => Path.Combine(TemplateOutputDir, "bin", "Debug", TargetFramework, RuntimeIdentifier);
     public string TemplatePublishDir => Path.Combine(TemplateOutputDir, "bin", "Release", TargetFramework, RuntimeIdentifier, "publish");
@@ -72,13 +66,19 @@ public class Project : IDisposable
         bool useLocalDB = false,
         bool noHttps = false,
         bool errorOnRestoreError = true,
+        bool isItemTemplate = false,
         string[] args = null,
         // Used to set special options in MSBuild
         IDictionary<string, string> environmentVariables = null)
     {
-        var hiveArg = $" --debug:disable-sdk-templates --debug:custom-hive \"{TemplatePackageInstaller.CustomHivePath}\"";
+        var hiveArg = $"--debug:disable-sdk-templates --debug:custom-hive \"{TemplatePackageInstaller.CustomHivePath}\"";
         var argString = $"new {templateName} {hiveArg}";
         environmentVariables ??= new Dictionary<string, string>();
+        if (!isItemTemplate)
+        {
+            argString += " --no-restore";
+        }
+
         if (!string.IsNullOrEmpty(auth))
         {
             argString += $" --auth {auth}";
@@ -119,18 +119,30 @@ public class Project : IDisposable
             Directory.Delete(TemplateOutputDir, recursive: true);
         }
 
-        using var execution = ProcessEx.Run(Output, AppContext.BaseDirectory, DotNetMuxer.MuxerPathOrDefault(), argString, environmentVariables);
-        await execution.Exited;
+        using var createExecution = ProcessEx.Run(Output, AppContext.BaseDirectory, DotNetMuxer.MuxerPathOrDefault(), argString, environmentVariables);
+        await createExecution.Exited;
 
-        var result = new ProcessResult(execution);
+        var createResult = new ProcessResult(createExecution);
+        Assert.True(0 == createResult.ExitCode, ErrorMessages.GetFailedProcessMessage("create", this, createResult));
 
-        // Because dotnet new automatically restores but silently ignores restore errors, need to handle restore errors explicitly
-        if (errorOnRestoreError && (execution.Output.Contains("Restore failed.") || execution.Error.Contains("Restore failed.")))
+        if (!isItemTemplate)
         {
-            result.ExitCode = -1;
-        }
+            argString = "restore /bl";
+            using var restoreExecution = ProcessEx.Run(Output, TemplateOutputDir, DotNetMuxer.MuxerPathOrDefault(), argString, environmentVariables);
+            await restoreExecution.Exited;
 
-        Assert.True(0 == result.ExitCode, ErrorMessages.GetFailedProcessMessage("create/restore", this, result));
+            var restoreResult = new ProcessResult(restoreExecution);
+
+            // Because dotnet new automatically restores but silently ignores restore errors, need to handle restore errors explicitly
+            if (errorOnRestoreError && (restoreExecution.Output.Contains("Restore failed.") || restoreExecution.Error.Contains("Restore failed.")))
+            {
+                restoreResult.ExitCode = -1;
+            }
+
+            CaptureBinLogOnFailure(restoreExecution);
+
+            Assert.True(0 == restoreResult.ExitCode, ErrorMessages.GetFailedProcessMessage("restore", this, restoreResult));
+        }
     }
 
     internal async Task RunDotNetPublishAsync(IDictionary<string, string> packageOptions = null, string additionalArgs = null, bool noRestore = true)
@@ -181,11 +193,11 @@ public class Project : IDisposable
         Assert.True(0 == result.ExitCode, ErrorMessages.GetFailedProcessMessage("build", this, result));
     }
 
-    internal AspNetProcess StartBuiltProjectAsync(bool hasListeningUri = true, ILogger logger = null)
+    internal AspNetProcess StartBuiltProjectAsync(bool hasListeningUri = true, ILogger logger = null, bool noHttps = false)
     {
         var environment = new Dictionary<string, string>
         {
-            ["ASPNETCORE_URLS"] = _urls,
+            ["ASPNETCORE_URLS"] = noHttps ? _urlsNoHttps : _urls,
             ["ASPNETCORE_ENVIRONMENT"] = "Development",
             ["ASPNETCORE_Logging__Console__LogLevel__Default"] = "Debug",
             ["ASPNETCORE_Logging__Console__LogLevel__System"] = "Debug",
@@ -197,11 +209,11 @@ public class Project : IDisposable
         return new AspNetProcess(DevCert, Output, TemplateOutputDir, projectDll, environment, published: false, hasListeningUri: hasListeningUri, logger: logger);
     }
 
-    internal AspNetProcess StartPublishedProjectAsync(bool hasListeningUri = true, bool usePublishedAppHost = false)
+    internal AspNetProcess StartPublishedProjectAsync(bool hasListeningUri = true, bool usePublishedAppHost = false, bool noHttps = false)
     {
         var environment = new Dictionary<string, string>
         {
-            ["ASPNETCORE_URLS"] = _urls,
+            ["ASPNETCORE_URLS"] = noHttps ? _urlsNoHttps : _urls,
             ["ASPNETCORE_Logging__Console__LogLevel__Default"] = "Debug",
             ["ASPNETCORE_Logging__Console__LogLevel__System"] = "Debug",
             ["ASPNETCORE_Logging__Console__LogLevel__Microsoft"] = "Debug",
@@ -335,19 +347,60 @@ public class Project : IDisposable
 
             // Check there are no more launch profiles defined
             Assert.False(profilesEnumerator.MoveNext());
+        }
+    }
 
-            if (launchSettings.RootElement.TryGetProperty("iisSettings", out var iisSettings)
-                && iisSettings.TryGetProperty("iisExpress", out var iisExpressSettings))
+    public async Task VerifyHasProperty(string propertyName, string expectedValue)
+    {
+        var projectFile = Directory.EnumerateFiles(TemplateOutputDir, "*proj").FirstOrDefault();
+
+        Assert.NotNull(projectFile);
+
+        var projectFileContents = await File.ReadAllTextAsync(projectFile);
+        Assert.Contains($"<{propertyName}>{expectedValue}</{propertyName}>", projectFileContents);
+    }
+
+    public void SetCurrentRuntimeIdentifier()
+    {
+        RuntimeIdentifier = GetRuntimeIdentifier();
+
+        static string GetRuntimeIdentifier()
+        {
+            // we need to use the "portable" RID (win-x64), not the actual RID (win10-x64)
+            return $"{GetOS()}-{GetArchitecture()}";
+        }
+
+        static string GetOS()
+        {
+            if (OperatingSystem.IsWindows())
             {
-                var iisSslPort = iisExpressSettings.GetProperty("sslPort").GetInt32();
-                if (expectedLaunchProfileNames.Contains("https"))
-                {
-                    Assert.True(iisSslPort >= 44300 && iisSslPort <= 44399, $"IIS Express port was expected to be >= 44300 and <= 44399 but was {iisSslPort} in file {filePath}");
-                }
-                else
-                {
-                    Assert.Equal(0, iisSslPort);
-                }
+                return "win";
+            }
+            if (OperatingSystem.IsLinux())
+            {
+                return "linux";
+            }
+            if (OperatingSystem.IsMacOS())
+            {
+                return "osx";
+            }
+            throw new NotSupportedException();
+        }
+
+        static string GetArchitecture()
+        {
+            switch (RuntimeInformation.ProcessArchitecture)
+            {
+                case Architecture.X86:
+                    return "x86";
+                case Architecture.X64:
+                    return "x64";
+                case Architecture.Arm:
+                    return "arm";
+                case Architecture.Arm64:
+                    return "arm64";
+                default:
+                    throw new NotSupportedException();
             }
         }
     }

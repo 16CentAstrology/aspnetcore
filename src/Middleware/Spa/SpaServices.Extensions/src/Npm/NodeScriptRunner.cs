@@ -24,20 +24,9 @@ internal sealed class NodeScriptRunner : IDisposable
 
     public NodeScriptRunner(string workingDirectory, string scriptName, string? arguments, IDictionary<string, string>? envVars, string pkgManagerCommand, DiagnosticSource diagnosticSource, CancellationToken applicationStoppingToken)
     {
-        if (string.IsNullOrEmpty(workingDirectory))
-        {
-            throw new ArgumentException("Cannot be null or empty.", nameof(workingDirectory));
-        }
-
-        if (string.IsNullOrEmpty(scriptName))
-        {
-            throw new ArgumentException("Cannot be null or empty.", nameof(scriptName));
-        }
-
-        if (string.IsNullOrEmpty(pkgManagerCommand))
-        {
-            throw new ArgumentException("Cannot be null or empty.", nameof(pkgManagerCommand));
-        }
+        ArgumentException.ThrowIfNullOrEmpty(workingDirectory);
+        ArgumentException.ThrowIfNullOrEmpty(scriptName);
+        ArgumentException.ThrowIfNullOrEmpty(pkgManagerCommand);
 
         var exeToRun = pkgManagerCommand;
         var completeArguments = $"run {scriptName} -- {arguments ?? string.Empty}";
@@ -97,7 +86,7 @@ internal sealed class NodeScriptRunner : IDisposable
         // When the node task emits complete lines, pass them through to the real logger
         StdOut.OnReceivedLine += line =>
         {
-            if (!string.IsNullOrWhiteSpace(line))
+            if (!string.IsNullOrWhiteSpace(line) && logger.IsEnabled(LogLevel.Information))
             {
                 // Node tasks commonly emit ANSI colors, but it wouldn't make sense to forward
                 // those to loggers (because a logger isn't necessarily any kind of terminal)

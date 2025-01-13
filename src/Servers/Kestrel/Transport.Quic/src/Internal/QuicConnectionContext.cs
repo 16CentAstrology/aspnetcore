@@ -19,10 +19,10 @@ internal partial class QuicConnectionContext : TransportMultiplexedConnection
 
     private bool _streamPoolHeartbeatInitialized;
     // Ticks updated once per-second in heartbeat event.
-    private long _heartbeatTicks;
-    private readonly object _poolLock = new object();
+    private long _heartbeatTimestamp;
+    private readonly Lock _poolLock = new();
 
-    private readonly object _shutdownLock = new object();
+    private readonly Lock _shutdownLock = new();
     private readonly QuicConnection _connection;
     private readonly QuicTransportContext _context;
     private readonly ILogger _log;
@@ -33,7 +33,7 @@ internal partial class QuicConnectionContext : TransportMultiplexedConnection
 
     internal const int InitialStreamPoolSize = 5;
     internal const int MaxStreamPoolSize = 100;
-    internal const long StreamPoolExpiryTicks = TimeSpan.TicksPerSecond * 5;
+    internal const long StreamPoolExpirySeconds = 5;
 
     public QuicConnectionContext(QuicConnection connection, QuicTransportContext context)
     {
@@ -56,6 +56,7 @@ internal partial class QuicConnectionContext : TransportMultiplexedConnection
         {
             lock (_shutdownLock)
             {
+                // The DefaultCloseErrorCode setter validates that the error code is within the valid range
                 _closeTask ??= _connection.CloseAsync(errorCode: _context.Options.DefaultCloseErrorCode).AsTask();
             }
 
@@ -81,7 +82,7 @@ internal partial class QuicConnectionContext : TransportMultiplexedConnection
                 return;
             }
 
-            var resolvedErrorCode = _error ?? 0;
+            var resolvedErrorCode = _error ?? 0; // Only valid error codes are assigned to _error
             _abortReason = ExceptionDispatchInfo.Capture(abortReason);
             QuicLog.ConnectionAbort(_log, this, resolvedErrorCode, abortReason.Message);
             _closeTask = _connection.CloseAsync(errorCode: resolvedErrorCode).AsTask();
@@ -130,7 +131,7 @@ internal partial class QuicConnectionContext : TransportMultiplexedConnection
         catch (QuicException ex) when (ex.QuicError == QuicError.ConnectionAborted)
         {
             // Shutdown initiated by peer, abortive.
-            _error = ex.ApplicationErrorCode;
+            _error = ex.ApplicationErrorCode; // Trust Quic to provide us a valid error code
             QuicLog.ConnectionAborted(_log, this, ex.ApplicationErrorCode.GetValueOrDefault(), ex);
 
             ThreadPool.UnsafeQueueUserWorkItem(state =>
@@ -182,11 +183,13 @@ internal partial class QuicConnectionContext : TransportMultiplexedConnection
                 _abortReason?.Throw();
             }
         }
+#if DEBUG
         catch (Exception ex)
         {
             Debug.Fail($"Unexpected exception in {nameof(QuicConnectionContext)}.{nameof(AcceptAsync)}: {ex}");
             throw;
         }
+#endif
 
         // Return null for graceful closure or cancellation.
         return null;
@@ -240,6 +243,8 @@ internal partial class QuicConnectionContext : TransportMultiplexedConnection
     {
         lock (_poolLock)
         {
+            var timeProvider = _context.Options.TimeProvider;
+
             if (!_streamPoolHeartbeatInitialized)
             {
                 // Heartbeat feature is added to connection features by Kestrel.
@@ -254,16 +259,16 @@ internal partial class QuicConnectionContext : TransportMultiplexedConnection
 
                 heartbeatFeature.OnHeartbeat(static state => ((QuicConnectionContext)state).RemoveExpiredStreams(), this);
 
-                // Set ticks for the first time. Ticks are then updated in heartbeat.
-                var now = _context.Options.SystemClock.UtcNow.Ticks;
-                Volatile.Write(ref _heartbeatTicks, now);
+                // Set timestamp for the first time. Timestamps are then updated in heartbeat.
+                var now = timeProvider.GetTimestamp();
+                Volatile.Write(ref _heartbeatTimestamp, now);
 
                 _streamPoolHeartbeatInitialized = true;
             }
 
             if (stream.CanReuse && StreamPool.Count < MaxStreamPoolSize)
             {
-                stream.PoolExpirationTicks = Volatile.Read(ref _heartbeatTicks) + StreamPoolExpiryTicks;
+                stream.PoolExpirationTimestamp = Volatile.Read(ref _heartbeatTimestamp) + StreamPoolExpirySeconds * timeProvider.TimestampFrequency;
                 StreamPool.Push(stream);
 
                 QuicLog.StreamPooled(_log, stream);
@@ -284,8 +289,8 @@ internal partial class QuicConnectionContext : TransportMultiplexedConnection
         lock (_poolLock)
         {
             // Update ticks on heartbeat. A precise value isn't necessary.
-            var now = _context.Options.SystemClock.UtcNow.Ticks;
-            Volatile.Write(ref _heartbeatTicks, now);
+            var now = _context.Options.TimeProvider.GetTimestamp();
+            Volatile.Write(ref _heartbeatTimestamp, now);
 
             StreamPool.RemoveExpired(now);
         }

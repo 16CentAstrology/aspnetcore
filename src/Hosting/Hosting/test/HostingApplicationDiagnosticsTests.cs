@@ -2,16 +2,468 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System.Diagnostics;
+using System.Diagnostics.Metrics;
+using System.Diagnostics.Tracing;
 using System.Reflection;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.Http.Metadata;
+using Microsoft.AspNetCore.Internal;
+using Microsoft.AspNetCore.InternalTesting;
+using Microsoft.Extensions.Diagnostics.Metrics;
+using Microsoft.Extensions.Diagnostics.Metrics.Testing;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Testing;
 using Moq;
 
 namespace Microsoft.AspNetCore.Hosting.Tests;
 
-public class HostingApplicationDiagnosticsTests
+public class HostingApplicationDiagnosticsTests : LoggedTest
 {
+    [Fact]
+    [QuarantinedTest("https://github.com/dotnet/aspnetcore/issues/57259")]
+    public async Task EventCountersAndMetricsValues()
+    {
+        // Arrange
+        var hostingEventSource = new HostingEventSource(Guid.NewGuid().ToString());
+
+        // requests-per-second isn't tested because the value can't be reliably tested because of time
+        using var eventListener = new TestCounterListener(LoggerFactory, hostingEventSource.Name,
+        [
+            "total-requests",
+            "current-requests",
+            "failed-requests"
+        ]);
+
+        var timeout = !Debugger.IsAttached ? TimeSpan.FromSeconds(30) : Timeout.InfiniteTimeSpan;
+        using CancellationTokenSource timeoutTokenSource = new CancellationTokenSource(timeout);
+        timeoutTokenSource.Token.Register(() => Logger.LogError("Timeout while waiting for counter value."));
+
+        var totalRequestValues = eventListener.GetCounterValues("total-requests", timeoutTokenSource.Token).GetAsyncEnumerator();
+        var currentRequestValues = eventListener.GetCounterValues("current-requests", timeoutTokenSource.Token).GetAsyncEnumerator();
+        var failedRequestValues = eventListener.GetCounterValues("failed-requests", timeoutTokenSource.Token).GetAsyncEnumerator();
+
+        eventListener.EnableEvents(hostingEventSource, EventLevel.Informational, EventKeywords.None,
+            new Dictionary<string, string>
+            {
+                { "EventCounterIntervalSec", "1" }
+            });
+
+        var testMeterFactory1 = new TestMeterFactory();
+        var testMeterFactory2 = new TestMeterFactory();
+
+        var logger = LoggerFactory.CreateLogger<HostingApplication>();
+        var hostingApplication1 = CreateApplication(out var features1, eventSource: hostingEventSource, meterFactory: testMeterFactory1, logger: logger);
+        var hostingApplication2 = CreateApplication(out var features2, eventSource: hostingEventSource, meterFactory: testMeterFactory2, logger: logger);
+
+        using var activeRequestsCollector1 = new MetricCollector<long>(testMeterFactory1, HostingMetrics.MeterName, "http.server.active_requests");
+        using var activeRequestsCollector2 = new MetricCollector<long>(testMeterFactory2, HostingMetrics.MeterName, "http.server.active_requests");
+        using var requestDurationCollector1 = new MetricCollector<double>(testMeterFactory1, HostingMetrics.MeterName, "http.server.request.duration");
+        using var requestDurationCollector2 = new MetricCollector<double>(testMeterFactory2, HostingMetrics.MeterName, "http.server.request.duration");
+
+        // Act/Assert 1
+        Logger.LogInformation("Act/Assert 1");
+        Logger.LogInformation(nameof(HostingApplication.CreateContext));
+
+        var context1 = hostingApplication1.CreateContext(features1);
+        var context2 = hostingApplication2.CreateContext(features2);
+
+        await totalRequestValues.WaitForSumValueAsync(2);
+        await currentRequestValues.WaitForValueAsync(2);
+        await failedRequestValues.WaitForValueAsync(0);
+
+        Logger.LogInformation(nameof(HostingApplication.DisposeContext));
+
+        hostingApplication1.DisposeContext(context1, null);
+        hostingApplication2.DisposeContext(context2, null);
+
+        await totalRequestValues.WaitForSumValueAsync(2);
+        await currentRequestValues.WaitForValueAsync(0);
+        await failedRequestValues.WaitForValueAsync(0);
+
+        Assert.Collection(activeRequestsCollector1.GetMeasurementSnapshot(),
+            m => Assert.Equal(1, m.Value),
+            m => Assert.Equal(-1, m.Value));
+        Assert.Collection(activeRequestsCollector2.GetMeasurementSnapshot(),
+            m => Assert.Equal(1, m.Value),
+            m => Assert.Equal(-1, m.Value));
+        Assert.Collection(requestDurationCollector1.GetMeasurementSnapshot(),
+            m => Assert.True(m.Value > 0));
+        Assert.Collection(requestDurationCollector2.GetMeasurementSnapshot(),
+            m => Assert.True(m.Value > 0));
+
+        // Act/Assert 2
+        Logger.LogInformation("Act/Assert 2");
+        Logger.LogInformation(nameof(HostingApplication.CreateContext));
+
+        context1 = hostingApplication1.CreateContext(features1);
+        context2 = hostingApplication2.CreateContext(features2);
+
+        await totalRequestValues.WaitForSumValueAsync(4);
+        await currentRequestValues.WaitForValueAsync(2);
+        await failedRequestValues.WaitForValueAsync(0);
+
+        context1.HttpContext.Response.StatusCode = StatusCodes.Status500InternalServerError;
+        context2.HttpContext.Response.StatusCode = StatusCodes.Status500InternalServerError;
+
+        Logger.LogInformation(nameof(HostingApplication.DisposeContext));
+
+        hostingApplication1.DisposeContext(context1, null);
+        hostingApplication2.DisposeContext(context2, null);
+
+        await totalRequestValues.WaitForSumValueAsync(4);
+        await currentRequestValues.WaitForValueAsync(0);
+        await failedRequestValues.WaitForValueAsync(2);
+
+        Assert.Collection(activeRequestsCollector1.GetMeasurementSnapshot(),
+            m => Assert.Equal(1, m.Value),
+            m => Assert.Equal(-1, m.Value),
+            m => Assert.Equal(1, m.Value),
+            m => Assert.Equal(-1, m.Value));
+        Assert.Collection(activeRequestsCollector2.GetMeasurementSnapshot(),
+            m => Assert.Equal(1, m.Value),
+            m => Assert.Equal(-1, m.Value),
+            m => Assert.Equal(1, m.Value),
+            m => Assert.Equal(-1, m.Value));
+        Assert.Collection(requestDurationCollector1.GetMeasurementSnapshot(),
+            m => Assert.True(m.Value > 0),
+            m => Assert.True(m.Value > 0));
+        Assert.Collection(requestDurationCollector2.GetMeasurementSnapshot(),
+            m => Assert.True(m.Value > 0),
+            m => Assert.True(m.Value > 0));
+    }
+
+    [Fact]
+    public void EventCountersEnabled()
+    {
+        // Arrange
+        var hostingEventSource = new HostingEventSource(Guid.NewGuid().ToString());
+
+        using var eventListener = new TestCounterListener(LoggerFactory, hostingEventSource.Name,
+        [
+            "requests-per-second",
+            "total-requests",
+            "current-requests",
+            "failed-requests"
+        ]);
+
+        eventListener.EnableEvents(hostingEventSource, EventLevel.Informational, EventKeywords.None,
+            new Dictionary<string, string>
+            {
+                { "EventCounterIntervalSec", "1" }
+            });
+
+        var testMeterFactory = new TestMeterFactory();
+
+        // Act
+        var hostingApplication = CreateApplication(out var features, eventSource: hostingEventSource, meterFactory: testMeterFactory);
+        var context = hostingApplication.CreateContext(features);
+
+        // Assert
+        Assert.True(context.EventLogEnabled);
+        Assert.False(context.MetricsEnabled);
+    }
+
+    [Fact]
+    public void Metrics_RequestDuration_RecordedWithHttpActivity()
+    {
+        // Arrange
+        Activity measurementActivity = null;
+        var measureCount = 0;
+
+        // Listen to hosting activity source.
+        var testSource = new ActivitySource(Path.GetRandomFileName());
+        using var activityListener = new ActivityListener
+        {
+            ShouldListenTo = activitySource => ReferenceEquals(activitySource, testSource),
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllData
+        };
+        ActivitySource.AddActivityListener(activityListener);
+
+        // Listen to http.server.request.duration.
+        var testMeterFactory = new TestMeterFactory();
+        var meterListener = new MeterListener();
+        meterListener.InstrumentPublished = (i, l) =>
+        {
+            if (i.Meter.Scope == testMeterFactory && i.Meter.Name == HostingMetrics.MeterName && i.Name == "http.server.request.duration")
+            {
+                l.EnableMeasurementEvents(i);
+            }
+        };
+        meterListener.SetMeasurementEventCallback<double>((i, m, t, s) =>
+        {
+            if (Interlocked.Increment(ref measureCount) > 1)
+            {
+                throw new Exception("Unexpected measurement count.");
+            }
+
+            measurementActivity = Activity.Current;
+        });
+        meterListener.Start();
+
+        // Act
+        var hostingApplication = CreateApplication(out var features, activitySource: testSource, meterFactory: testMeterFactory);
+        var context = hostingApplication.CreateContext(features);
+        hostingApplication.DisposeContext(context, null);
+
+        // Assert
+        Assert.Equal(1, measureCount);
+        Assert.NotNull(measurementActivity);
+        Assert.Equal(HostingApplicationDiagnostics.ActivityName, measurementActivity.OperationName);
+    }
+
+    [Fact]
+    public void MetricsEnabled()
+    {
+        // Arrange
+        var testMeterFactory = new TestMeterFactory();
+        using var activeRequestsCollector = new MetricCollector<long>(testMeterFactory, HostingMetrics.MeterName, "http.server.active_requests");
+        using var requestDurationCollector = new MetricCollector<double>(testMeterFactory, HostingMetrics.MeterName, "http.server.request.duration");
+
+        // Act
+        var hostingApplication = CreateApplication(out var features, meterFactory: testMeterFactory);
+        var context = hostingApplication.CreateContext(features);
+
+        // Assert
+        Assert.True(context.MetricsEnabled);
+        Assert.False(context.EventLogEnabled);
+    }
+
+    [Fact]
+    public void Metrics_RequestChanges_OriginalValuesUsed()
+    {
+        // Arrange
+        var hostingEventSource = new HostingEventSource(Guid.NewGuid().ToString());
+
+        var testMeterFactory = new TestMeterFactory();
+        using var activeRequestsCollector = new MetricCollector<long>(testMeterFactory, HostingMetrics.MeterName, "http.server.active_requests");
+
+        // Act
+        var hostingApplication = CreateApplication(out var features, eventSource: hostingEventSource, meterFactory: testMeterFactory, configure: c =>
+        {
+            c.Request.Protocol = "1.1";
+            c.Request.Scheme = "http";
+            c.Request.Method = "POST";
+            c.Request.Host = new HostString("localhost");
+            c.Request.Path = "/hello";
+            c.Request.ContentType = "text/plain";
+            c.Request.ContentLength = 1024;
+        });
+        var context = hostingApplication.CreateContext(features);
+
+        Assert.Collection(activeRequestsCollector.GetMeasurementSnapshot(),
+            m =>
+            {
+                Assert.Equal(1, m.Value);
+                Assert.Equal("http", m.Tags["url.scheme"]);
+                Assert.Equal("POST", m.Tags["http.request.method"]);
+            });
+
+        context.HttpContext.Request.Protocol = "HTTP/2";
+        context.HttpContext.Request.Method = "PUT";
+        context.HttpContext.Request.Scheme = "https";
+        context.HttpContext.Features.GetRequiredFeature<IHttpMetricsTagsFeature>().Tags.Add(new KeyValuePair<string, object>("custom.tag", "custom.value"));
+
+        hostingApplication.DisposeContext(context, null);
+
+        // Assert
+        Assert.Collection(activeRequestsCollector.GetMeasurementSnapshot(),
+            m =>
+            {
+                Assert.Equal(1, m.Value);
+                Assert.Equal("http", m.Tags["url.scheme"]);
+                Assert.Equal("POST", m.Tags["http.request.method"]);
+            },
+            m =>
+            {
+                Assert.Equal(-1, m.Value);
+                Assert.Equal("http", m.Tags["url.scheme"]);
+                Assert.Equal("POST", m.Tags["http.request.method"]);
+            });
+
+        Assert.Empty(context.MetricsTagsFeature.TagsList);
+        Assert.Null(context.MetricsTagsFeature.Scheme);
+        Assert.Null(context.MetricsTagsFeature.Method);
+        Assert.Null(context.MetricsTagsFeature.Protocol);
+    }
+
+    [Fact]
+    public void Metrics_Route_RouteTagReported()
+    {
+        // Arrange
+        var hostingEventSource = new HostingEventSource(Guid.NewGuid().ToString());
+
+        var testMeterFactory = new TestMeterFactory();
+        using var activeRequestsCollector = new MetricCollector<long>(testMeterFactory, HostingMetrics.MeterName, "http.server.active_requests");
+        using var requestDurationCollector = new MetricCollector<double>(testMeterFactory, HostingMetrics.MeterName, "http.server.request.duration");
+
+        // Act
+        var hostingApplication = CreateApplication(out var features, eventSource: hostingEventSource, meterFactory: testMeterFactory, configure: c =>
+        {
+            c.Request.Protocol = "1.1";
+            c.Request.Scheme = "http";
+            c.Request.Method = "POST";
+            c.Request.Host = new HostString("localhost");
+            c.Request.Path = "/hello";
+            c.Request.ContentType = "text/plain";
+            c.Request.ContentLength = 1024;
+        });
+        var context = hostingApplication.CreateContext(features);
+
+        Assert.Collection(activeRequestsCollector.GetMeasurementSnapshot(),
+            m =>
+            {
+                Assert.Equal(1, m.Value);
+                Assert.Equal("http", m.Tags["url.scheme"]);
+                Assert.Equal("POST", m.Tags["http.request.method"]);
+            });
+
+        context.HttpContext.SetEndpoint(new Endpoint(
+            c => Task.CompletedTask,
+            new EndpointMetadataCollection(new TestRouteDiagnosticsMetadata()),
+            "Test endpoint"));
+
+        hostingApplication.DisposeContext(context, null);
+
+        // Assert
+        Assert.Collection(activeRequestsCollector.GetMeasurementSnapshot(),
+            m =>
+            {
+                Assert.Equal(1, m.Value);
+                Assert.Equal("http", m.Tags["url.scheme"]);
+                Assert.Equal("POST", m.Tags["http.request.method"]);
+            },
+            m =>
+            {
+                Assert.Equal(-1, m.Value);
+                Assert.Equal("http", m.Tags["url.scheme"]);
+                Assert.Equal("POST", m.Tags["http.request.method"]);
+            });
+        Assert.Collection(requestDurationCollector.GetMeasurementSnapshot(),
+            m =>
+            {
+                Assert.True(m.Value > 0);
+                Assert.Equal("hello/{name}", m.Tags["http.route"]);
+            });
+    }
+
+    [Fact]
+    public void Metrics_DisableHttpMetricsWithMetadata_NoMetrics()
+    {
+        // Arrange
+        var hostingEventSource = new HostingEventSource(Guid.NewGuid().ToString());
+
+        var testMeterFactory = new TestMeterFactory();
+        using var activeRequestsCollector = new MetricCollector<long>(testMeterFactory, HostingMetrics.MeterName, "http.server.active_requests");
+        using var requestDurationCollector = new MetricCollector<double>(testMeterFactory, HostingMetrics.MeterName, "http.server.request.duration");
+
+        // Act
+        var hostingApplication = CreateApplication(out var features, eventSource: hostingEventSource, meterFactory: testMeterFactory, configure: c =>
+        {
+            c.Request.Protocol = "1.1";
+            c.Request.Scheme = "http";
+            c.Request.Method = "POST";
+            c.Request.Host = new HostString("localhost");
+            c.Request.Path = "/hello";
+            c.Request.ContentType = "text/plain";
+            c.Request.ContentLength = 1024;
+        });
+        var context = hostingApplication.CreateContext(features);
+
+        Assert.Collection(activeRequestsCollector.GetMeasurementSnapshot(),
+            m =>
+            {
+                Assert.Equal(1, m.Value);
+                Assert.Equal("http", m.Tags["url.scheme"]);
+                Assert.Equal("POST", m.Tags["http.request.method"]);
+            });
+
+        context.HttpContext.SetEndpoint(new Endpoint(
+            c => Task.CompletedTask,
+            new EndpointMetadataCollection(new TestRouteDiagnosticsMetadata(), new DisableHttpMetricsAttribute()),
+            "Test endpoint"));
+
+        hostingApplication.DisposeContext(context, null);
+
+        // Assert
+        Assert.Collection(activeRequestsCollector.GetMeasurementSnapshot(),
+            m =>
+            {
+                Assert.Equal(1, m.Value);
+                Assert.Equal("http", m.Tags["url.scheme"]);
+                Assert.Equal("POST", m.Tags["http.request.method"]);
+            },
+            m =>
+            {
+                Assert.Equal(-1, m.Value);
+                Assert.Equal("http", m.Tags["url.scheme"]);
+                Assert.Equal("POST", m.Tags["http.request.method"]);
+            });
+        Assert.Empty(requestDurationCollector.GetMeasurementSnapshot());
+    }
+
+    [Fact]
+    public void Metrics_DisableHttpMetricsWithFeature_NoMetrics()
+    {
+        // Arrange
+        var hostingEventSource = new HostingEventSource(Guid.NewGuid().ToString());
+
+        var testMeterFactory = new TestMeterFactory();
+        using var activeRequestsCollector = new MetricCollector<long>(testMeterFactory, HostingMetrics.MeterName, "http.server.active_requests");
+        using var requestDurationCollector = new MetricCollector<double>(testMeterFactory, HostingMetrics.MeterName, "http.server.request.duration");
+
+        // Act
+        var hostingApplication = CreateApplication(out var features, eventSource: hostingEventSource, meterFactory: testMeterFactory, configure: c =>
+        {
+            c.Request.Protocol = "1.1";
+            c.Request.Scheme = "http";
+            c.Request.Method = "POST";
+            c.Request.Host = new HostString("localhost");
+            c.Request.Path = "/hello";
+            c.Request.ContentType = "text/plain";
+            c.Request.ContentLength = 1024;
+        });
+        var context = hostingApplication.CreateContext(features);
+
+        Assert.Collection(activeRequestsCollector.GetMeasurementSnapshot(),
+            m =>
+            {
+                Assert.Equal(1, m.Value);
+                Assert.Equal("http", m.Tags["url.scheme"]);
+                Assert.Equal("POST", m.Tags["http.request.method"]);
+            });
+
+        context.HttpContext.Features.Get<IHttpMetricsTagsFeature>().MetricsDisabled = true;
+
+        // Assert 1
+        Assert.True(context.MetricsTagsFeature.MetricsDisabled);
+
+        hostingApplication.DisposeContext(context, null);
+
+        // Assert 2
+        Assert.Collection(activeRequestsCollector.GetMeasurementSnapshot(),
+            m =>
+            {
+                Assert.Equal(1, m.Value);
+                Assert.Equal("http", m.Tags["url.scheme"]);
+                Assert.Equal("POST", m.Tags["http.request.method"]);
+            },
+            m =>
+            {
+                Assert.Equal(-1, m.Value);
+                Assert.Equal("http", m.Tags["url.scheme"]);
+                Assert.Equal("POST", m.Tags["http.request.method"]);
+            });
+        Assert.Empty(requestDurationCollector.GetMeasurementSnapshot());
+        Assert.False(context.MetricsTagsFeature.MetricsDisabled);
+    }
+
+    private sealed class TestRouteDiagnosticsMetadata : IRouteDiagnosticsMetadata
+    {
+        public string Route { get; } = "hello/{name}";
+    }
+
     [Fact]
     public void DisposeContextDoesNotThrowWhenContextScopeIsNull()
     {
@@ -283,14 +735,43 @@ public class HostingApplicationDiagnosticsTests
         features.Set<IHttpRequestFeature>(new HttpRequestFeature()
         {
             Headers = new HeaderDictionary()
-                {
-                    {"Request-Id", "ParentId1"},
-                    {"baggage", "Key1=value1, Key2=value2"}
-                }
+            {
+                {"Request-Id", "ParentId1"},
+                {"baggage", "Key1=value1, Key2=value2"}
+            }
         });
         hostingApplication.CreateContext(features);
         Assert.Equal("Microsoft.AspNetCore.Hosting.HttpRequestIn", Activity.Current.OperationName);
         Assert.Equal("ParentId1", Activity.Current.ParentId);
+        Assert.Contains(Activity.Current.Baggage, pair => pair.Key == "Key1" && pair.Value == "value1");
+        Assert.Contains(Activity.Current.Baggage, pair => pair.Key == "Key2" && pair.Value == "value2");
+    }
+
+    [Fact]
+    public void BaggageReadFromHeadersWithoutRequestId()
+    {
+        var diagnosticListener = new DiagnosticListener("DummySource");
+        var hostingApplication = CreateApplication(out var features, diagnosticListener: diagnosticListener);
+
+        diagnosticListener.Subscribe(new CallbackDiagnosticListener(pair => { }),
+            s =>
+            {
+                if (s.StartsWith("Microsoft.AspNetCore.Hosting.HttpRequestIn", StringComparison.Ordinal))
+                {
+                    return true;
+                }
+                return false;
+            });
+
+        features.Set<IHttpRequestFeature>(new HttpRequestFeature()
+        {
+            Headers = new HeaderDictionary()
+            {
+                {"baggage", "Key1=value1, Key2=value2"}
+            }
+        });
+        hostingApplication.CreateContext(features);
+        Assert.Equal("Microsoft.AspNetCore.Hosting.HttpRequestIn", Activity.Current.OperationName);
         Assert.Contains(Activity.Current.Baggage, pair => pair.Key == "Key1" && pair.Value == "value1");
         Assert.Contains(Activity.Current.Baggage, pair => pair.Key == "Key2" && pair.Value == "value2");
     }
@@ -314,10 +795,10 @@ public class HostingApplicationDiagnosticsTests
         features.Set<IHttpRequestFeature>(new HttpRequestFeature()
         {
             Headers = new HeaderDictionary()
-                {
-                    {"Request-Id", "ParentId1"},
-                    {"Correlation-Context", "Key1=value1, Key2=value2"}
-                }
+            {
+                {"Request-Id", "ParentId1"},
+                {"Correlation-Context", "Key1=value1, Key2=value2"}
+            }
         });
         hostingApplication.CreateContext(features);
         Assert.Equal("Microsoft.AspNetCore.Hosting.HttpRequestIn", Activity.Current.OperationName);
@@ -344,11 +825,11 @@ public class HostingApplicationDiagnosticsTests
         features.Set<IHttpRequestFeature>(new HttpRequestFeature()
         {
             Headers = new HeaderDictionary()
-                {
-                    {"Request-Id", "ParentId1"},
-                    {"Correlation-Context", "Key1=value1, Key2=value2"},
-                    {"baggage", "Key1=value3, Key2=value4"}
-                }
+            {
+                {"Request-Id", "ParentId1"},
+                {"Correlation-Context", "Key1=value1, Key2=value2"},
+                {"baggage", "Key1=value3, Key2=value4"}
+            }
         });
         hostingApplication.CreateContext(features);
         Assert.Equal("Microsoft.AspNetCore.Hosting.HttpRequestIn", Activity.Current.OperationName);
@@ -375,20 +856,20 @@ public class HostingApplicationDiagnosticsTests
         features.Set<IHttpRequestFeature>(new HttpRequestFeature()
         {
             Headers = new HeaderDictionary()
-                {
-                    {"Request-Id", "ParentId1"},
-                    {"baggage", "Key1=value1, Key2=value2, Key1=value3"} // duplicated keys allowed by the contract
-                }
+            {
+                {"Request-Id", "ParentId1"},
+                {"baggage", "Key1=value1, Key2=value2, Key1=value3"} // duplicated keys allowed by the contract
+            }
         });
         hostingApplication.CreateContext(features);
         Assert.Equal("Microsoft.AspNetCore.Hosting.HttpRequestIn", Activity.Current.OperationName);
 
         var expectedBaggage = new[]
         {
-                KeyValuePair.Create("Key1","value1"),
-                KeyValuePair.Create("Key2","value2"),
-                KeyValuePair.Create("Key1","value3")
-            };
+            KeyValuePair.Create("Key1","value1"),
+            KeyValuePair.Create("Key2","value2"),
+            KeyValuePair.Create("Key1","value3")
+        };
 
         Assert.Equal(expectedBaggage, Activity.Current.Baggage.ToArray());
     }
@@ -412,10 +893,10 @@ public class HostingApplicationDiagnosticsTests
         features.Set<IHttpRequestFeature>(new HttpRequestFeature()
         {
             Headers = new HeaderDictionary()
-                {
-                    {"Request-Id", "ParentId1"},
-                    {"baggage", "Key1=value1%2F1"}
-                }
+            {
+                {"Request-Id", "ParentId1"},
+                {"baggage", "Key1=value1%2F1"}
+            }
         });
         hostingApplication.CreateContext(features);
         Assert.Equal("Microsoft.AspNetCore.Hosting.HttpRequestIn", Activity.Current.OperationName);
@@ -441,11 +922,11 @@ public class HostingApplicationDiagnosticsTests
         features.Set<IHttpRequestFeature>(new HttpRequestFeature()
         {
             Headers = new HeaderDictionary()
-                {
-                    {"traceparent", "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01"},
-                    {"tracestate", "TraceState1"},
-                    {"baggage", "Key1=value1, Key2=value2"}
-                }
+            {
+                {"traceparent", "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01"},
+                {"tracestate", "TraceState1"},
+                {"baggage", "Key1=value1, Key2=value2"}
+            }
         });
         hostingApplication.CreateContext(features);
         Assert.Equal("Microsoft.AspNetCore.Hosting.HttpRequestIn", Activity.Current.OperationName);
@@ -483,9 +964,9 @@ public class HostingApplicationDiagnosticsTests
         features.Set<IHttpRequestFeature>(new HttpRequestFeature()
         {
             Headers = new HeaderDictionary()
-                {
-                    {"traceparent", "00-35aae61e3e99044eb5ea5007f2cd159b-40a8bd87c078cb4c-00"},
-                }
+            {
+                {"traceparent", "00-35aae61e3e99044eb5ea5007f2cd159b-40a8bd87c078cb4c-00"},
+            }
         });
 
         hostingApplication.CreateContext(features);
@@ -551,15 +1032,48 @@ public class HostingApplicationDiagnosticsTests
         features.Set<IHttpRequestFeature>(new HttpRequestFeature()
         {
             Headers = new HeaderDictionary()
-                {
-                    {"traceparent", "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01"},
-                    {"tracestate", "TraceState1"},
-                    {"baggage", "Key1=value1, Key2=value2"}
-                }
+            {
+                {"traceparent", "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01"},
+                {"tracestate", "TraceState1"},
+                {"baggage", "Key1=value1, Key2=value2"}
+            }
         });
 
         hostingApplication.CreateContext(features);
         Assert.Equal("0123456789abcdef", parentSpanId);
+    }
+
+    [Fact]
+    public void RequestLogs()
+    {
+        var testSink = new TestSink();
+        var loggerFactory = new TestLoggerFactory(testSink, enabled: true);
+
+        var hostingApplication = CreateApplication(out var features, logger: loggerFactory.CreateLogger("Test"), configure: c =>
+        {
+            c.Request.Protocol = "1.1";
+            c.Request.Scheme = "http";
+            c.Request.Method = "POST";
+            c.Request.Host = new HostString("localhost");
+            c.Request.Path = "/hello";
+            c.Request.ContentType = "text/plain";
+            c.Request.ContentLength = 1024;
+        });
+
+        var context = hostingApplication.CreateContext(features);
+
+        context.HttpContext.Items["__RequestUnhandled"] = true;
+        context.HttpContext.Response.StatusCode = 404;
+
+        hostingApplication.DisposeContext(context, exception: null);
+
+        var startLog = testSink.Writes.Single(w => w.EventId == LoggerEventIds.RequestStarting);
+        var unhandedLog = testSink.Writes.Single(w => w.EventId == LoggerEventIds.RequestUnhandled);
+        var endLog = testSink.Writes.Single(w => w.EventId == LoggerEventIds.RequestFinished);
+
+        Assert.Equal("Request starting 1.1 POST http://localhost/hello - text/plain 1024", startLog.Message);
+        Assert.Equal("Request reached the end of the middleware pipeline without being handled by application code. Request path: POST http://localhost/hello, Response status code: 404", unhandedLog.Message);
+        Assert.StartsWith("Request finished 1.1 POST http://localhost/hello - 404", endLog.Message);
     }
 
     private static void AssertProperty<T>(object o, string name)
@@ -573,12 +1087,14 @@ public class HostingApplicationDiagnosticsTests
     }
 
     private static HostingApplication CreateApplication(out FeatureCollection features,
-        DiagnosticListener diagnosticListener = null, ActivitySource activitySource = null, ILogger logger = null, Action<DefaultHttpContext> configure = null)
+        DiagnosticListener diagnosticListener = null, ActivitySource activitySource = null, ILogger logger = null,
+        Action<DefaultHttpContext> configure = null, HostingEventSource eventSource = null, IMeterFactory meterFactory = null)
     {
         var httpContextFactory = new Mock<IHttpContextFactory>();
 
         features = new FeatureCollection();
         features.Set<IHttpRequestFeature>(new HttpRequestFeature());
+        features.Set<IHttpResponseFeature>(new HttpResponseFeature());
         var context = new DefaultHttpContext(features);
         configure?.Invoke(context);
         httpContextFactory.Setup(s => s.Create(It.IsAny<IFeatureCollection>())).Returns(context);
@@ -590,7 +1106,9 @@ public class HostingApplicationDiagnosticsTests
             diagnosticListener ?? new NoopDiagnosticListener(),
             activitySource ?? new ActivitySource("Microsoft.AspNetCore"),
             DistributedContextPropagator.CreateDefaultPropagator(),
-            httpContextFactory.Object);
+            httpContextFactory.Object,
+            eventSource ?? HostingEventSource.Log,
+            new HostingMetrics(meterFactory ?? new TestMeterFactory()));
 
         return hostingApplication;
     }

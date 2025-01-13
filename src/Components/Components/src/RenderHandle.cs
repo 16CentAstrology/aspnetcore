@@ -52,6 +52,39 @@ public readonly struct RenderHandle
         ?? throw new InvalidOperationException("No renderer has been initialized.");
 
     /// <summary>
+    /// Gets the <see cref="Components.RendererInfo"/> the component is running on.
+    /// </summary>
+    public RendererInfo RendererInfo => _renderer?.RendererInfo ?? throw new InvalidOperationException("No renderer has been initialized.");
+
+    /// <summary>
+    /// Retrieves the <see cref="IComponentRenderMode"/> assigned to the component.
+    /// </summary>
+    /// <returns>The <see cref="IComponentRenderMode"/> assigned to the component.</returns>
+    public IComponentRenderMode? RenderMode
+    {
+        get
+        {
+            if (_renderer == null)
+            {
+                throw new InvalidOperationException("No renderer has been initialized.");
+            }
+
+            return _renderer.GetComponentRenderMode(_componentId);
+        }
+    }
+
+    /// <summary>
+    /// Gets the <see cref="ResourceAssetCollection"/> associated with the <see cref="Renderer"/>.
+    /// </summary>
+    public ResourceAssetCollection Assets
+    {
+        get
+        {
+            return _renderer?.Assets ?? throw new InvalidOperationException("No renderer has been initialized.");
+        }
+    }
+
+    /// <summary>
     /// Notifies the renderer that the component should be rendered.
     /// </summary>
     /// <param name="renderFragment">The content that should be rendered.</param>
@@ -63,6 +96,18 @@ public readonly struct RenderHandle
         }
 
         _renderer.AddToRenderQueue(_componentId, renderFragment);
+    }
+
+    /// <summary>
+    /// Dispatches an <see cref="Exception"/> to the <see cref="Renderer"/>.
+    /// </summary>
+    /// <param name="exception">The <see cref="Exception"/> that will be dispatched to the renderer.</param>
+    /// <returns>A <see cref="Task"/> that will be completed when the exception has finished dispatching.</returns>
+    public Task DispatchExceptionAsync(Exception exception)
+    {
+        var renderer = _renderer;
+        var componentId = _componentId;
+        return Dispatcher.InvokeAsync(() => renderer!.HandleComponentException(exception, componentId));
     }
 
     [DoesNotReturn]

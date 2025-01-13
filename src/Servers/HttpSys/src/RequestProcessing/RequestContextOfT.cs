@@ -27,7 +27,11 @@ internal sealed partial class RequestContext<TContext> : RequestContext where TC
 
         try
         {
-            InitializeFeatures();
+            if (!InitializeFeatures())
+            {
+                Abort();
+                return;
+            }
 
             if (messagePump.Stopping)
             {
@@ -56,7 +60,14 @@ internal sealed partial class RequestContext<TContext> : RequestContext where TC
             {
                 applicationException = ex;
 
-                Log.RequestProcessError(Logger, ex);
+                if ((ex is OperationCanceledException || ex is IOException) && DisconnectToken.IsCancellationRequested)
+                {
+                    Log.RequestAborted(Logger);
+                }
+                else
+                {
+                    Log.RequestProcessError(Logger, ex);
+                }
                 if (Response.HasStarted)
                 {
                     // Otherwise the default is Cancel = 0x8 (h2) or 0x010c (h3).
@@ -83,6 +94,10 @@ internal sealed partial class RequestContext<TContext> : RequestContext where TC
                     if (ex is BadHttpRequestException badHttpRequestException)
                     {
                         SetFatalResponse(badHttpRequestException.StatusCode);
+                    }
+                    else if ((ex is OperationCanceledException || ex is IOException) && DisconnectToken.IsCancellationRequested)
+                    {
+                        SetFatalResponse(StatusCodes.Status499ClientClosedRequest);
                     }
                     else
                     {

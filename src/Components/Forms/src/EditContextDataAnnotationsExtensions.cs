@@ -46,19 +46,18 @@ public static class EditContextDataAnnotationsExtensions
     /// <returns>A disposable object whose disposal will remove DataAnnotations validation support from the <see cref="EditContext"/>.</returns>
     public static IDisposable EnableDataAnnotationsValidation(this EditContext editContext, IServiceProvider serviceProvider)
     {
-        if (serviceProvider == null)
-        {
-            throw new ArgumentNullException(nameof(serviceProvider));
-        }
+        ArgumentNullException.ThrowIfNull(serviceProvider);
         return new DataAnnotationsEventSubscriptions(editContext, serviceProvider);
     }
 
     private static event Action? OnClearCache;
 
+#pragma warning disable IDE0051 // Remove unused private members
     private static void ClearCache(Type[]? _)
     {
         OnClearCache?.Invoke();
     }
+#pragma warning restore IDE0051 // Remove unused private members
 
     private sealed class DataAnnotationsEventSubscriptions : IDisposable
     {

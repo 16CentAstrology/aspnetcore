@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Shared;
 
 namespace Microsoft.AspNetCore.Identity;
 
@@ -38,16 +39,10 @@ public class PasswordValidator<TUser> : IPasswordValidator<TUser> where TUser : 
     /// <returns>The task object representing the asynchronous operation.</returns>
     public virtual Task<IdentityResult> ValidateAsync(UserManager<TUser> manager, TUser user, string? password)
     {
-        if (password == null)
-        {
-            throw new ArgumentNullException(nameof(password));
-        }
-        if (manager == null)
-        {
-            throw new ArgumentNullException(nameof(manager));
-        }
+        ArgumentNullThrowHelper.ThrowIfNull(manager);
         List<IdentityError>? errors = null;
         var options = manager.Options.Password;
+        password ??= "";
         if (string.IsNullOrWhiteSpace(password) || password.Length < options.RequiredLength)
         {
             errors ??= new List<IdentityError>();

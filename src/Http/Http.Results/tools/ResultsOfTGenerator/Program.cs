@@ -12,10 +12,10 @@ public class Program
 
     public static void Main(string[] args)
     {
-        // By default we assume we're being run in the context of the <repo>/src/Http/Http.Results/src
+        // By default we assume we're being run in the context of the <repo>/src/Http/Http.Results/tools/ResultsOfTGenerator directory
         var pwd = Directory.GetCurrentDirectory();
-        var classTargetFilePath = Path.Combine(pwd, "ResultsOfT.Generated.cs");
-        var testsTargetFilePath = Path.Combine(pwd, "..", "test", "ResultsOfTTests.Generated.cs");
+        var classTargetFilePath = Path.Combine(pwd, "..", "..", "src", "ResultsOfT.Generated.cs");
+        var testsTargetFilePath = Path.Combine(pwd, "..", "..", "test", "ResultsOfTTests.Generated.cs");
 
         if (args.Length > 0)
         {
@@ -60,6 +60,7 @@ public class Program
         writer.WriteLine();
 
         // Usings
+        writer.WriteLine("using System.Diagnostics.CodeAnalysis;");
         writer.WriteLine("using System.Reflection;");
         writer.WriteLine("using Microsoft.AspNetCore.Builder;");
         writer.WriteLine("using Microsoft.AspNetCore.Http.Metadata;");
@@ -97,7 +98,7 @@ public class Program
             // Type args
             for (int j = 1; j <= i; j++)
             {
-                writer.Write($"TResult{j}");
+                writer.Write($"[DynamicallyAccessedMembers(ResultsOfTHelper.RequireMethods)] TResult{j}");
                 if (j != i)
                 {
                     writer.Write(", ");
@@ -481,7 +482,7 @@ public class Program
     static void GenerateTest_Throws_ArgumentNullException_WhenHttpContextIsNull(StreamWriter writer, int typeArgNumber)
     {
         //[Fact]
-        //public void ResultsOfTResult1TResult2_Throws_ArgumentNullException_WhenHttpContextIsNull()
+        //public async Task ResultsOfTResult1TResult2_Throws_ArgumentNullException_WhenHttpContextIsNull()
         //{
         //    // Arrange
         //    Results<ChecksumResult1, NoContent> MyApi()
@@ -493,7 +494,7 @@ public class Program
         //    // Act & Assert
         //    var result = MyApi();
 
-        //    Assert.ThrowsAsync<ArgumentNullException>(async () =>
+        //    await Assert.ThrowsAsync<ArgumentNullException>(async () =>
         //    {
         //        await result.ExecuteAsync(httpContext);
         //    });
@@ -503,7 +504,7 @@ public class Program
         writer.WriteIndentedLine("[Fact]");
 
         // Start method
-        writer.WriteIndent(1, "public void ResultsOf");
+        writer.WriteIndent(1, "public async Task ResultsOf");
         for (int j = 1; j <= typeArgNumber; j++)
         {
             writer.Write($"TResult{j}");
@@ -525,7 +526,7 @@ public class Program
         writer.WriteIndentedLine(2, "var result = MyApi();");
         writer.WriteLine();
 
-        writer.WriteIndentedLine(2, "Assert.ThrowsAsync<ArgumentNullException>(async () =>");
+        writer.WriteIndentedLine(2, "await Assert.ThrowsAsync<ArgumentNullException>(async () =>");
         writer.WriteIndentedLine(2, "{");
         writer.WriteIndentedLine(3, "await result.ExecuteAsync(httpContext);");
         writer.WriteIndentedLine(2, "});");
@@ -538,7 +539,7 @@ public class Program
     static void GenerateTest_Throws_InvalidOperationException_WhenResultIsNull(StreamWriter writer, int typeArgNumber)
     {
         //[Fact]
-        //public void ResultsOfTResult1TResult2_Throws_InvalidOperationException_WhenResultIsNull()
+        //public async Task ResultsOfTResult1TResult2_Throws_InvalidOperationException_WhenResultIsNull()
         //{
         //    // Arrange
         //    Results<ChecksumResult1, NoContent> MyApi()
@@ -550,7 +551,7 @@ public class Program
         //    // Act & Assert
         //    var result = MyApi();
 
-        //    Assert.ThrowsAsync<InvalidOperationException>(async () =>
+        //    await Assert.ThrowsAsync<InvalidOperationException>(async () =>
         //    {
         //        await result.ExecuteAsync(httpContext);
         //    });
@@ -560,7 +561,7 @@ public class Program
         writer.WriteIndentedLine("[Fact]");
 
         // Start method
-        writer.WriteIndent(1, "public void ResultsOf");
+        writer.WriteIndent(1, "public async Task ResultsOf");
         for (int j = 1; j <= typeArgNumber; j++)
         {
             writer.Write($"TResult{j}");
@@ -572,7 +573,7 @@ public class Program
         writer.WriteIndentedLine(2, "// Arrange");
         writer.WriteIndentedLine(2, "Results<ChecksumResult1, NoContent> MyApi()");
         writer.WriteIndentedLine(2, "{");
-        writer.WriteIndentedLine(3, "return new ChecksumResult1(1);");
+        writer.WriteIndentedLine(3, "return (ChecksumResult1)null;");
         writer.WriteIndentedLine(2, "}");
         writer.WriteIndentedLine(2, "var httpContext = GetHttpContext();");
         writer.WriteLine();
@@ -582,7 +583,7 @@ public class Program
         writer.WriteIndentedLine(2, "var result = MyApi();");
         writer.WriteLine();
 
-        writer.WriteIndentedLine(2, "Assert.ThrowsAsync<InvalidOperationException>(async () =>");
+        writer.WriteIndentedLine(2, "await Assert.ThrowsAsync<InvalidOperationException>(async () =>");
         writer.WriteIndentedLine(2, "{");
         writer.WriteIndentedLine(3, "await result.ExecuteAsync(httpContext);");
         writer.WriteIndentedLine(2, "});");

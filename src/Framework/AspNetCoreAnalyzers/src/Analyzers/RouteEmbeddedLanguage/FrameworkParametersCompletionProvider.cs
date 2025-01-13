@@ -27,6 +27,8 @@ using RoutePatternToken = Microsoft.AspNetCore.Analyzers.Infrastructure.Embedded
 
 namespace Microsoft.AspNetCore.Analyzers.RouteEmbeddedLanguage;
 
+using WellKnownType = WellKnownTypeData.WellKnownType;
+
 [ExportCompletionProvider(nameof(RoutePatternCompletionProvider), LanguageNames.CSharp)]
 [Shared]
 public sealed class FrameworkParametersCompletionProvider : CompletionProvider
@@ -158,7 +160,7 @@ public sealed class FrameworkParametersCompletionProvider : CompletionProvider
             methodNode = delegateExpression;
 
             // Incomplete inline delegate syntax is very messy and arguments are mixed together.
-            // Examine tokens to figure out wether the current token is the argument name.
+            // Examine tokens to figure out whether the current token is the argument name.
             var previous = token.GetPreviousToken();
             if (previous.IsKind(SyntaxKind.CommaToken) ||
                 previous.IsKind(SyntaxKind.OpenParenToken) ||
@@ -261,7 +263,7 @@ public sealed class FrameworkParametersCompletionProvider : CompletionProvider
 
             if (change.NewPosition != null)
             {
-                properties.Add(NewPositionKey, change.NewPosition.ToString());
+                properties.Add(NewPositionKey, change.NewPosition.Value.ToString(CultureInfo.InvariantCulture));
             }
 
             // Keep everything sorted in the order we just produced the items in.
@@ -451,30 +453,6 @@ public sealed class FrameworkParametersCompletionProvider : CompletionProvider
         {
             context.AddIfMissing(routeParameter.Name, suffix: string.Empty, description: "(Route parameter)", WellKnownTags.Parameter, parentOpt);
         }
-    }
-
-    private (RoutePatternNode parent, RoutePatternToken Token)? FindToken(RoutePatternNode parent, VirtualChar ch)
-    {
-        foreach (var child in parent)
-        {
-            if (child.IsNode)
-            {
-                var result = FindToken(child.Node, ch);
-                if (result != null)
-                {
-                    return result;
-                }
-            }
-            else
-            {
-                if (child.Token.VirtualChars.Contains(ch))
-                {
-                    return (parent, child.Token);
-                }
-            }
-        }
-
-        return null;
     }
 
     private readonly struct RoutePatternItem

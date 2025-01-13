@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Connections;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using System.Net.Http.Headers;
 
 namespace Microsoft.AspNetCore.Http.Connections.Client.Internal;
 
@@ -35,7 +36,7 @@ internal sealed partial class LongPollingTransport : ITransport
     public LongPollingTransport(HttpClient httpClient, HttpConnectionOptions? httpConnectionOptions = null, ILoggerFactory? loggerFactory = null)
     {
         _httpClient = httpClient;
-        _logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger<LongPollingTransport>();
+        _logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger(typeof(LongPollingTransport));
         _httpConnectionOptions = httpConnectionOptions ?? new();
     }
 
@@ -50,12 +51,9 @@ internal sealed partial class LongPollingTransport : ITransport
 
         // Make initial long polling request
         // Server uses first long polling request to finish initializing connection and it returns without data
-        var request = new HttpRequestMessage(HttpMethod.Get, url)
-        {
-#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP
-            Version = HttpVersion.Version20,
-#endif
-        };
+        var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("*/*"));
+
         using (var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false))
         {
             response.EnsureSuccessStatusCode();
@@ -153,13 +151,8 @@ internal sealed partial class LongPollingTransport : ITransport
         {
             while (!cancellationToken.IsCancellationRequested)
             {
-                var request = new HttpRequestMessage(HttpMethod.Get, pollUrl)
-                {
-#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP
-                    Version = HttpVersion.Version20,
-#endif
-                };
-
+                var request = new HttpRequestMessage(HttpMethod.Get, pollUrl);
+                request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("*/*"));
                 HttpResponseMessage response;
 
                 try
@@ -237,12 +230,8 @@ internal sealed partial class LongPollingTransport : ITransport
         try
         {
             Log.SendingDeleteRequest(_logger, url);
-            var request = new HttpRequestMessage(HttpMethod.Delete, url)
-            {
-#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP
-                Version = HttpVersion.Version20,
-#endif
-            };
+            var request = new HttpRequestMessage(HttpMethod.Delete, url);
+
             var response = await _httpClient.SendAsync(request).ConfigureAwait(false);
 
             if (response.StatusCode == HttpStatusCode.NotFound)
