@@ -35,6 +35,11 @@ public class ContentDispositionHeaderValue
     private static ReadOnlySpan<byte> MimePrefix => "\"=?utf-8?B?"u8;
     private static ReadOnlySpan<byte> MimeSuffix => "?=\""u8;
 
+    // attr-char definition from RFC5987
+    // Same as token except ( "*" / "'" / "%" )
+    private static readonly SearchValues<char> Rfc5987AttrChar =
+        SearchValues.Create("!#$&+-.0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ^_`abcdefghijklmnopqrstuvwxyz|~");
+
     private static readonly HttpHeaderParser<ContentDispositionHeaderValue> Parser
         = new GenericHeaderParser<ContentDispositionHeaderValue>(false, GetDispositionTypeLength);
 
@@ -504,7 +509,7 @@ public class ContentDispositionHeaderValue
             for (int i = 0; i < result.Length; i++)
             {
                 var c = result[i];
-                if ((int)c > 0x7f || (int)c < 0x20)
+                if ((int)c >= 0x7f || (int)c < 0x20)
                 {
                     c = '_'; // Replace out-of-range characters
                 }
@@ -525,12 +530,12 @@ public class ContentDispositionHeaderValue
             && value.EndsWith("\"", StringComparison.Ordinal);
     }
 
-    // tspecials are required to be in a quoted string.  Only non-ascii needs to be encoded.
+    // tspecials are required to be in a quoted string.  Only non-ascii and control characters need to be encoded.
     private static bool RequiresEncoding(StringSegment input)
     {
         Contract.Assert(input != null);
 
-        return input.AsSpan().IndexOfAnyExceptInRange((char)0x20, (char)0x7f) >= 0;
+        return input.AsSpan().IndexOfAnyExceptInRange((char)0x20, (char)0x7e) >= 0;
     }
 
     // Encode using MIME encoding
@@ -613,54 +618,36 @@ public class ContentDispositionHeaderValue
     private static string Encode5987(StringSegment input)
     {
         var builder = new StringBuilder("UTF-8\'\'");
-
-        var maxInputBytes = Encoding.UTF8.GetMaxByteCount(input.Length);
-        byte[]? bufferFromPool = null;
-        Span<byte> inputBytes = maxInputBytes <= MaxStackAllocSizeBytes
-            ? stackalloc byte[MaxStackAllocSizeBytes]
-            : bufferFromPool = ArrayPool<byte>.Shared.Rent(maxInputBytes);
-
-        var bytesWritten = Encoding.UTF8.GetBytes(input, inputBytes);
-        inputBytes = inputBytes[..bytesWritten];
-
-        int totalBytesConsumed = 0;
-        while (totalBytesConsumed < inputBytes.Length)
+        var remaining = input.AsSpan();
+        while (remaining.Length > 0)
         {
-            if (inputBytes[totalBytesConsumed] <= 0x7F)
+            var length = remaining.IndexOfAnyExcept(Rfc5987AttrChar);
+            if (length < 0)
             {
-                // This is an ASCII char. Let's handle it ourselves.
-
-                char c = (char)inputBytes[totalBytesConsumed];
-                if (!HttpRuleParser.IsTokenChar(c) || c == '*' || c == '\'' || c == '%')
-                {
-                    HexEscape(builder, c);
-                }
-                else
-                {
-                    builder.Append(c);
-                }
-
-                totalBytesConsumed++;
+                length = remaining.Length;
             }
-            else
+            builder.Append(remaining[..length]);
+
+            remaining = remaining.Slice(length);
+            if (remaining.Length == 0)
             {
-                // Non-ASCII, let's rely on Rune to decode it.
-
-                Rune.DecodeFromUtf8(inputBytes.Slice(totalBytesConsumed), out Rune r, out int bytesConsumedForRune);
-                Contract.Assert(!r.IsAscii, "We shouldn't have gotten here if the Rune is ASCII.");
-
-                for (int i = 0; i < bytesConsumedForRune; i++)
-                {
-                    HexEscape(builder, (char)inputBytes[totalBytesConsumed + i]);
-                }
-
-                totalBytesConsumed += bytesConsumedForRune;
+                break;
             }
-        }
 
-        if (bufferFromPool is not null)
-        {
-            ArrayPool<byte>.Shared.Return(bufferFromPool);
+            length = remaining.IndexOfAny(Rfc5987AttrChar);
+            if (length < 0)
+            {
+                length = remaining.Length;
+            }
+
+            for (var i = 0; i < length;)
+            {
+                Rune.DecodeFromUtf16(remaining.Slice(i), out Rune rune, out var runeLength);
+                EncodeToUtf8Hex(rune, builder);
+                i += runeLength;
+            }
+
+            remaining = remaining.Slice(length);
         }
 
         return builder.ToString();
@@ -670,11 +657,45 @@ public class ContentDispositionHeaderValue
                                    '0', '1', '2', '3', '4', '5', '6', '7',
                                    '8', '9', 'A', 'B', 'C', 'D', 'E', 'F' };
 
-    private static void HexEscape(StringBuilder builder, char c)
+    private static void EncodeToUtf8Hex(Rune rune, StringBuilder builder)
     {
-        builder.Append('%');
-        builder.Append(HexUpperChars[(c & 0xf0) >> 4]);
-        builder.Append(HexUpperChars[c & 0xf]);
+        // Inspired by https://source.dot.net/#System.Private.CoreLib/src/libraries/System.Private.CoreLib/src/System/Text/Rune.cs TryEncodeToUtf8
+        var value = (uint)rune.Value;
+        if (rune.IsAscii)
+        {
+            var byteValue = (byte)value;
+            builder.Append(CultureInfo.InvariantCulture, $"%{HexUpperChars[(byteValue & 0xf0) >> 4]}{HexUpperChars[byteValue & 0xf]}");
+        }
+        else if (rune.Value <= 0x7FFu)
+        {
+            // Scalar 00000yyy yyxxxxxx -> bytes [ 110yyyyy 10xxxxxx ]
+            var byteValue = (byte)((value + (0b110u << 11)) >> 6);
+            builder.Append(CultureInfo.InvariantCulture, $"%{HexUpperChars[(byteValue & 0xf0) >> 4]}{HexUpperChars[byteValue & 0xf]}");
+            byteValue = (byte)((value & 0x3Fu) + 0x80u);
+            builder.Append(CultureInfo.InvariantCulture, $"%{HexUpperChars[(byteValue & 0xf0) >> 4]}{HexUpperChars[byteValue & 0xf]}");
+        }
+        else if (rune.Value <= 0xFFFFu)
+        {
+            // Scalar zzzzyyyy yyxxxxxx -> bytes [ 1110zzzz 10yyyyyy 10xxxxxx ]
+            var byteValue = (byte)((value + (0b1110 << 16)) >> 12);
+            builder.Append(CultureInfo.InvariantCulture, $"%{HexUpperChars[(byteValue & 0xf0) >> 4]}{HexUpperChars[byteValue & 0xf]}");
+            byteValue = (byte)(((value & (0x3Fu << 6)) >> 6) + 0x80u);
+            builder.Append(CultureInfo.InvariantCulture, $"%{HexUpperChars[(byteValue & 0xf0) >> 4]}{HexUpperChars[byteValue & 0xf]}");
+            byteValue = (byte)((value & 0x3Fu) + 0x80u);
+            builder.Append(CultureInfo.InvariantCulture, $"%{HexUpperChars[(byteValue & 0xf0) >> 4]}{HexUpperChars[byteValue & 0xf]}");
+        }
+        else
+        {
+            // Scalar 000uuuuu zzzzyyyy yyxxxxxx -> bytes [ 11110uuu 10uuzzzz 10yyyyyy 10xxxxxx ]
+            var byteValue = (byte)((value + (0b11110 << 21)) >> 18);
+            builder.Append(CultureInfo.InvariantCulture, $"%{HexUpperChars[(byteValue & 0xf0) >> 4]}{HexUpperChars[byteValue & 0xf]}");
+            byteValue = (byte)(((value & (0x3Fu << 12)) >> 12) + 0x80u);
+            builder.Append(CultureInfo.InvariantCulture, $"%{HexUpperChars[(byteValue & 0xf0) >> 4]}{HexUpperChars[byteValue & 0xf]}");
+            byteValue = (byte)(((value & (0x3Fu << 6)) >> 6) + 0x80u);
+            builder.Append(CultureInfo.InvariantCulture, $"%{HexUpperChars[(byteValue & 0xf0) >> 4]}{HexUpperChars[byteValue & 0xf]}");
+            byteValue = (byte)((value & 0x3Fu) + 0x80u);
+            builder.Append(CultureInfo.InvariantCulture, $"%{HexUpperChars[(byteValue & 0xf0) >> 4]}{HexUpperChars[byteValue & 0xf]}");
+        }
     }
 
     // Attempt to decode using RFC 5987 encoding.

@@ -13,6 +13,10 @@
   <ItemGroup>
     <Reference Include="Microsoft.AspNetCore.AzureAppServicesIntegration" />
     <Reference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" />
+    <Reference Include="System.Text.Json" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Microsoft.AspNetCore.AzureAppServicesIntegration.Tests" />
+  </ItemGroup>
 </Project>

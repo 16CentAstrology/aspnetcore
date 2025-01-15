@@ -70,10 +70,7 @@ public class HttpResponseStreamWriter : TextWriter
         _bytePool = bytePool ?? throw new ArgumentNullException(nameof(bytePool));
         _charPool = charPool ?? throw new ArgumentNullException(nameof(charPool));
 
-        if (bufferSize <= 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(bufferSize));
-        }
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(bufferSize);
         if (!_stream.CanWrite)
         {
             throw new ArgumentException(Resources.HttpResponseStreamWriter_StreamNotWritable, nameof(stream));
@@ -108,7 +105,7 @@ public class HttpResponseStreamWriter : TextWriter
     /// <inheritdoc/>
     public override void Write(char value)
     {
-        ObjectDisposedException.ThrowIf(_disposed, nameof(HttpResponseStreamWriter));
+        ThrowIfDisposed();
 
         if (_charBufferCount == _charBufferSize)
         {
@@ -122,7 +119,7 @@ public class HttpResponseStreamWriter : TextWriter
     /// <inheritdoc/>
     public override void Write(char[] values, int index, int count)
     {
-        ObjectDisposedException.ThrowIf(_disposed, nameof(HttpResponseStreamWriter));
+        ThrowIfDisposed();
 
         if (values == null)
         {
@@ -143,7 +140,7 @@ public class HttpResponseStreamWriter : TextWriter
     /// <inheritdoc/>
     public override void Write(ReadOnlySpan<char> value)
     {
-        ObjectDisposedException.ThrowIf(_disposed, nameof(HttpResponseStreamWriter));
+        ThrowIfDisposed();
 
         var remaining = value.Length;
         while (remaining > 0)
@@ -163,7 +160,7 @@ public class HttpResponseStreamWriter : TextWriter
     /// <inheritdoc/>
     public override void Write(string? value)
     {
-        ObjectDisposedException.ThrowIf(_disposed, nameof(HttpResponseStreamWriter));
+        ThrowIfDisposed();
 
         if (value == null)
         {
@@ -186,7 +183,7 @@ public class HttpResponseStreamWriter : TextWriter
     /// <inheritdoc/>
     public override void WriteLine(ReadOnlySpan<char> value)
     {
-        ObjectDisposedException.ThrowIf(_disposed, nameof(HttpResponseStreamWriter));
+        ThrowIfDisposed();
 
         Write(value);
         Write(NewLine);
@@ -508,7 +505,7 @@ public class HttpResponseStreamWriter : TextWriter
     /// <inheritdoc/>
     public override void Flush()
     {
-        ObjectDisposedException.ThrowIf(_disposed, nameof(HttpResponseStreamWriter));
+        ThrowIfDisposed();
 
         FlushInternal(flushEncoder: true);
     }
@@ -675,5 +672,10 @@ public class HttpResponseStreamWriter : TextWriter
     private static Task GetObjectDisposedTask()
     {
         return Task.FromException(new ObjectDisposedException(nameof(HttpResponseStreamWriter)));
+    }
+
+    private void ThrowIfDisposed()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
     }
 }

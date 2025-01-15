@@ -56,7 +56,7 @@ builder.Services.AddAuthentication(OpenIdConnectDefaults.AuthenticationScheme)
     .AddMicrosoftIdentityWebApp(builder.Configuration.GetSection("AzureAd"))
         .EnableTokenAcquisitionToCallDownstreamApi(initialScopes)
 #if (GenerateApi)
-            .AddDownstreamWebApi("DownstreamApi", builder.Configuration.GetSection("DownstreamApi"))
+            .AddDownstreamApi("DownstreamApi", builder.Configuration.GetSection("DownstreamApi"))
 #endif
 #if (GenerateGraph)
             .AddMicrosoftGraph(builder.Configuration.GetSection("DownstreamApi"))
@@ -74,7 +74,7 @@ builder.Services.AddAuthentication(OpenIdConnectDefaults.AuthenticationScheme)
 #if (GenerateApi)
     .AddMicrosoftIdentityWebApp(builder.Configuration.GetSection("AzureAdB2C"))
         .EnableTokenAcquisitionToCallDownstreamApi(initialScopes)
-            .AddDownstreamWebApi("DownstreamApi", builder.Configuration.GetSection("DownstreamApi"))
+            .AddDownstreamApi("DownstreamApi", builder.Configuration.GetSection("DownstreamApi"))
             .AddInMemoryTokenCaches();
 #else
     .AddMicrosoftIdentityWebApp(builder.Configuration.GetSection("AzureAdB2C"));
@@ -130,13 +130,14 @@ app.UseHttpsRedirection();
 #else
 }
 #endif
-app.UseStaticFiles();
 
 app.UseRouting();
 
 app.UseAuthorization();
 
-app.MapRazorPages();
+app.MapStaticAssets();
+app.MapRazorPages()
+   .WithStaticAssets();
 #if (IndividualB2CAuth || OrganizationalAuth)
 app.MapControllers();
 #endif

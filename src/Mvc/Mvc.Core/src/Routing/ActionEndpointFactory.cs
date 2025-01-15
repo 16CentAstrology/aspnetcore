@@ -27,10 +27,7 @@ internal sealed class ActionEndpointFactory
                                 IEnumerable<IRequestDelegateFactory> requestDelegateFactories,
                                 IServiceProvider serviceProvider)
     {
-        if (routePatternTransformer == null)
-        {
-            throw new ArgumentNullException(nameof(routePatternTransformer));
-        }
+        ArgumentNullException.ThrowIfNull(routePatternTransformer);
 
         _routePatternTransformer = routePatternTransformer;
         _requestDelegate = CreateRequestDelegate();
@@ -50,14 +47,14 @@ internal sealed class ActionEndpointFactory
         bool createInertEndpoints,
         RoutePattern? groupPrefix = null)
     {
-        ArgumentNullException.ThrowIfNull(nameof(endpoints));
-        ArgumentNullException.ThrowIfNull(nameof(routeNames));
-        ArgumentNullException.ThrowIfNull(nameof(action));
-        ArgumentNullException.ThrowIfNull(nameof(routes));
-        ArgumentNullException.ThrowIfNull(nameof(conventions));
-        ArgumentNullException.ThrowIfNull(nameof(groupConventions));
-        ArgumentNullException.ThrowIfNull(nameof(finallyConventions));
-        ArgumentNullException.ThrowIfNull(nameof(groupFinallyConventions));
+        ArgumentNullException.ThrowIfNull(endpoints);
+        ArgumentNullException.ThrowIfNull(routeNames);
+        ArgumentNullException.ThrowIfNull(action);
+        ArgumentNullException.ThrowIfNull(routes);
+        ArgumentNullException.ThrowIfNull(conventions);
+        ArgumentNullException.ThrowIfNull(groupConventions);
+        ArgumentNullException.ThrowIfNull(finallyConventions);
+        ArgumentNullException.ThrowIfNull(groupFinallyConventions);
 
         if (createInertEndpoints)
         {
@@ -185,20 +182,9 @@ internal sealed class ActionEndpointFactory
         IReadOnlyList<Action<EndpointBuilder>> finallyConventions,
         RoutePattern? groupPrefix = null)
     {
-        if (endpoints == null)
-        {
-            throw new ArgumentNullException(nameof(endpoints));
-        }
-
-        if (keys == null)
-        {
-            throw new ArgumentNullException(nameof(keys));
-        }
-
-        if (conventions == null)
-        {
-            throw new ArgumentNullException(nameof(conventions));
-        }
+        ArgumentNullException.ThrowIfNull(endpoints);
+        ArgumentNullException.ThrowIfNull(keys);
+        ArgumentNullException.ThrowIfNull(conventions);
 
         var requiredValues = new RouteValueDictionary();
         foreach (var key in keys)

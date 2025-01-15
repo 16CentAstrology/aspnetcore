@@ -21,7 +21,7 @@ public class ErrorBoundaryTest : ServerTestBase<ToggleExecutionModeServerFixture
     protected override void InitializeAsyncCore()
     {
         // Many of these tests trigger fatal exceptions, so we always have to reload
-        Navigate(ServerPathBase, noReload: false);
+        Navigate(ServerPathBase);
         Browser.MountTestComponent<ErrorBoundaryContainer>();
     }
 
@@ -35,6 +35,8 @@ public class ErrorBoundaryTest : ServerTestBase<ToggleExecutionModeServerFixture
     [InlineData("afterrender-sync")]
     [InlineData("afterrender-async")]
     [InlineData("while-rendering")]
+    [InlineData("dispatch-sync-exception")]
+    [InlineData("dispatch-async-exception")]
     public void CanHandleExceptions(string triggerId)
     {
         var container = Browser.Exists(By.Id("error-boundary-container"));
@@ -44,7 +46,7 @@ public class ErrorBoundaryTest : ServerTestBase<ToggleExecutionModeServerFixture
         Browser.Collection(() => container.FindElements(By.CssSelector("*")),
             elem =>
             {
-                Assert.Equal("blazor-error-boundary", elem.GetAttribute("class"));
+                Assert.Equal("blazor-error-boundary", elem.GetDomAttribute("class"));
                 Assert.Empty(elem.FindElements(By.CssSelector("*")));
             });
 

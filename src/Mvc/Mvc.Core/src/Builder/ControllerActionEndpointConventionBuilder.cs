@@ -23,16 +23,15 @@ public sealed class ControllerActionEndpointConventionBuilder : IEndpointConvent
         _finallyConventions = finallyConventions;
     }
 
+    internal Dictionary<string, object> Items { get; set; } = [];
+
     /// <summary>
     /// Adds the specified convention to the builder. Conventions are used to customize <see cref="EndpointBuilder"/> instances.
     /// </summary>
     /// <param name="convention">The convention to add to the builder.</param>
     public void Add(Action<EndpointBuilder> convention)
     {
-        if (convention == null)
-        {
-            throw new ArgumentNullException(nameof(convention));
-        }
+        ArgumentNullException.ThrowIfNull(convention);
 
         // The lock is shared with the data source. We want to lock here
         // to avoid mutating this list while its read in the data source.
@@ -45,7 +44,7 @@ public sealed class ControllerActionEndpointConventionBuilder : IEndpointConvent
     /// <inheritdoc />
     public void Finally(Action<EndpointBuilder> finalConvention)
     {
-        ArgumentNullException.ThrowIfNull(nameof(finalConvention));
+        ArgumentNullException.ThrowIfNull(finalConvention);
 
         lock (_lock)
         {

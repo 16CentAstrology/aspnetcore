@@ -16,6 +16,8 @@ using Microsoft.CodeAnalysis.Simplification;
 
 namespace Microsoft.AspNetCore.Analyzers.Http.Fixers;
 
+using WellKnownType = WellKnownTypeData.WellKnownType;
+
 [ExportCodeFixProvider(LanguageNames.CSharp), Shared]
 public sealed class HeaderDictionaryAddFixer : CodeFixProvider
 {
@@ -122,7 +124,7 @@ public sealed class HeaderDictionaryAddFixer : CodeFixProvider
                 SyntaxFactory.AssignmentExpression(
                     SyntaxKind.SimpleAssignmentExpression,
                     SyntaxFactory.ElementAccessExpression(
-                        memberAccessExpression.Expression,
+                        memberAccessExpression.Expression.WithoutTrailingTrivia(),
                         SyntaxFactory.BracketedArgumentList(
                             SyntaxFactory.SeparatedList(new[] { arguments[0] }))),
                     arguments[1].Expression);

@@ -59,10 +59,7 @@ public sealed class FileStreamHttpResult : IResult, IFileHttpResult, IContentTyp
         DateTimeOffset? lastModified = null,
         EntityTagHeaderValue? entityTag = null)
     {
-        if (fileStream == null)
-        {
-            throw new ArgumentNullException(nameof(fileStream));
-        }
+        ArgumentNullException.ThrowIfNull(fileStream);
 
         FileStream = fileStream;
         if (fileStream.CanSeek)
@@ -70,7 +67,7 @@ public sealed class FileStreamHttpResult : IResult, IFileHttpResult, IContentTyp
             FileLength = fileStream.Length;
         }
 
-        ContentType = contentType ?? "application/octet-stream";
+        ContentType = contentType ?? ContentTypeConstants.BinaryContentType;
         FileDownloadName = fileDownloadName;
         EnableRangeProcessing = enableRangeProcessing;
         LastModified = lastModified;

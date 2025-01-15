@@ -16,6 +16,18 @@ using HttpMethods = Microsoft.AspNetCore.Http.HttpMethods;
 
 namespace Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http2;
 
+/// <summary>
+/// A poolable HTTP/2 stream.
+/// </summary>
+/// <remarks>
+/// In practice, the product code uses <see cref="Http2Stream{TContext}"/>. This appears to be
+/// a simplified version omitting <see cref="Hosting.Server.IHttpApplication{TContext}"/> that
+/// the tests can subtype for mocking.
+/// <para/>
+/// Reusable after calling <see cref="Initialize"/> or <see cref="InitializeWithExistingContext"/>.
+/// <para/>
+/// Indirectly owned, via <see cref="PooledStreamStack{TValue}"/>, by an <see cref="Http2Connection"/>.
+/// </remarks>
 internal abstract partial class Http2Stream : HttpProtocol, IThreadPoolWorkItem, IDisposable, IPooledStream
 {
     private Http2StreamContext _context = default!;
@@ -29,10 +41,10 @@ internal abstract partial class Http2Stream : HttpProtocol, IThreadPoolWorkItem,
 
     public Pipe RequestBodyPipe { get; private set; } = default!;
 
-    internal long DrainExpirationTicks { get; set; }
+    internal long DrainExpirationTimestamp { get; set; }
 
     private StreamCompletionFlags _completionState;
-    private readonly object _completionLock = new object();
+    private readonly Lock _completionLock = new();
 
     public void Initialize(Http2StreamContext context)
     {
@@ -42,7 +54,7 @@ internal abstract partial class Http2Stream : HttpProtocol, IThreadPoolWorkItem,
         _completionState = StreamCompletionFlags.None;
         InputRemaining = null;
         RequestBodyStarted = false;
-        DrainExpirationTicks = 0;
+        DrainExpirationTimestamp = 0;
         TotalParsedHeaderSize = 0;
         // Allow up to 2x during parsing, enforce the hard limit after when we can preserve the connection.
         _eagerRequestHeadersParsedLimit = ServerOptions.Limits.MaxRequestHeaderCount * 2;
@@ -82,6 +94,8 @@ internal abstract partial class Http2Stream : HttpProtocol, IThreadPoolWorkItem,
     }
 
     public int StreamId => _context.StreamId;
+    public BaseConnectionContext ConnectionContext => _context.ConnectionContext;
+    public ConnectionMetricsContext MetricsContext => _context.MetricsContext;
 
     public long? InputRemaining { get; internal set; }
 
@@ -433,7 +447,7 @@ internal abstract partial class Http2Stream : HttpProtocol, IThreadPoolWorkItem,
                 pathBuffer[i] = (byte)ch;
             }
 
-            Path = PathNormalizer.DecodePath(pathBuffer, pathEncoded, RawTarget!, QueryString!.Length);
+            Path = PathDecoder.DecodePath(pathBuffer, pathEncoded, RawTarget!, QueryString!.Length);
 
             return true;
         }
@@ -723,5 +737,5 @@ internal abstract partial class Http2Stream : HttpProtocol, IThreadPoolWorkItem,
         Dispose();
     }
 
-    long IPooledStream.PoolExpirationTicks => DrainExpirationTicks;
+    long IPooledStream.PoolExpirationTimestamp => DrainExpirationTimestamp;
 }
