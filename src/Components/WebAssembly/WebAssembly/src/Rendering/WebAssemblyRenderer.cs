@@ -2,12 +2,15 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices.JavaScript;
 using Microsoft.AspNetCore.Components.RenderTree;
+using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.Web.Infrastructure;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using Microsoft.AspNetCore.Components.WebAssembly.Services;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Microsoft.JSInterop;
 using static Microsoft.AspNetCore.Internal.LinkerFlags;
 
 namespace Microsoft.AspNetCore.Components.WebAssembly.Rendering;
@@ -19,18 +22,72 @@ namespace Microsoft.AspNetCore.Components.WebAssembly.Rendering;
 internal sealed partial class WebAssemblyRenderer : WebRenderer
 {
     private readonly ILogger _logger;
+    private readonly Dispatcher _dispatcher;
+    private readonly ResourceAssetCollection _resourceCollection;
+    private readonly IInternalJSImportMethods _jsMethods;
+    private static readonly RendererInfo _componentPlatform = new("WebAssembly", isInteractive: true);
 
-    public WebAssemblyRenderer(IServiceProvider serviceProvider, ILoggerFactory loggerFactory, JSComponentInterop jsComponentInterop)
+    public WebAssemblyRenderer(IServiceProvider serviceProvider, ResourceAssetCollection resourceCollection, ILoggerFactory loggerFactory, JSComponentInterop jsComponentInterop)
         : base(serviceProvider, loggerFactory, DefaultWebAssemblyJSRuntime.Instance.ReadJsonSerializerOptions(), jsComponentInterop)
     {
-        // The WebAssembly renderer registers and unregisters itself with the static registry
-        RendererId = RendererRegistry.Add(this);
         _logger = loggerFactory.CreateLogger<WebAssemblyRenderer>();
+        _jsMethods = serviceProvider.GetRequiredService<IInternalJSImportMethods>();
+
+        // if SynchronizationContext.Current is null, it means we are on the single-threaded runtime
+        _dispatcher = WebAssemblyDispatcher._mainSynchronizationContext == null
+            ? NullDispatcher.Instance
+            : new WebAssemblyDispatcher();
+
+        _resourceCollection = resourceCollection;
 
         ElementReferenceContext = DefaultWebAssemblyJSRuntime.Instance.ElementReferenceContext;
+        DefaultWebAssemblyJSRuntime.Instance.OnUpdateRootComponents += OnUpdateRootComponents;
     }
 
-    public override Dispatcher Dispatcher => NullDispatcher.Instance;
+    [UnconditionalSuppressMessage("Trimming", "IL2072", Justification = "These are root components which belong to the user and are in assemblies that don't get trimmed.")]
+    private void OnUpdateRootComponents(RootComponentOperationBatch batch)
+    {
+        var webRootComponentManager = GetOrCreateWebRootComponentManager();
+        for (var i = 0; i < batch.Operations.Length; i++)
+        {
+            var operation = batch.Operations[i];
+            switch (operation.Type)
+            {
+                case RootComponentOperationType.Add:
+                    _ = webRootComponentManager.AddRootComponentAsync(
+                        operation.SsrComponentId,
+                        operation.Descriptor!.ComponentType,
+                        operation.Marker!.Value.Key!,
+                        operation.Descriptor!.Parameters);
+                    break;
+                case RootComponentOperationType.Update:
+                    _ = webRootComponentManager.UpdateRootComponentAsync(
+                        operation.SsrComponentId,
+                        operation.Descriptor!.ComponentType,
+                        operation.Marker?.Key,
+                        operation.Descriptor!.Parameters);
+                    break;
+                case RootComponentOperationType.Remove:
+                    webRootComponentManager.RemoveRootComponent(operation.SsrComponentId);
+                    break;
+            }
+        }
+
+        NotifyEndUpdateRootComponents(batch.BatchId);
+    }
+
+    protected override IComponentRenderMode? GetComponentRenderMode(IComponent component) => RenderMode.InteractiveWebAssembly;
+
+    public void NotifyEndUpdateRootComponents(long batchId)
+    {
+        _jsMethods.EndUpdateRootComponents(batchId);
+    }
+
+    protected override ResourceAssetCollection Assets => _resourceCollection;
+
+    protected override RendererInfo RendererInfo => _componentPlatform;
+
+    public override Dispatcher Dispatcher => _dispatcher;
 
     public Task AddComponentAsync([DynamicallyAccessedMembers(Component)] Type componentType, ParameterView parameters, string domElementSelector)
     {
@@ -38,20 +95,17 @@ internal sealed partial class WebAssemblyRenderer : WebRenderer
         return RenderRootComponentAsync(componentId, parameters);
     }
 
+    protected override int GetWebRendererId() => (int)WebRendererId.WebAssembly;
+
     protected override void AttachRootComponentToBrowser(int componentId, string domElementSelector)
     {
-        DefaultWebAssemblyJSRuntime.Instance.InvokeVoid(
-            "Blazor._internal.attachRootComponentToElement",
-            domElementSelector,
-            componentId,
-            RendererId);
+        _jsMethods.AttachRootComponentToElement(domElementSelector, componentId, RendererId);
     }
 
     /// <inheritdoc />
     protected override void Dispose(bool disposing)
     {
         base.Dispose(disposing);
-        RendererRegistry.TryRemove(RendererId);
     }
 
     /// <inheritdoc />
@@ -81,14 +135,20 @@ internal sealed partial class WebAssemblyRenderer : WebRenderer
     private void CallBaseProcessPendingRender() => base.ProcessPendingRender();
 
     /// <inheritdoc />
-    protected override Task UpdateDisplayAsync(in RenderBatch batch)
+    protected override unsafe Task UpdateDisplayAsync(in RenderBatch batch)
     {
-#pragma warning disable CS0618 // Type or member is obsolete
-        DefaultWebAssemblyJSRuntime.Instance.InvokeUnmarshalled<int, RenderBatch, object>(
-            "Blazor._internal.renderBatch",
-            RendererId,
-            batch);
-#pragma warning restore CS0618 // Type or member is obsolete
+        // This is a GC hazard - it would be ideal to pin 'batch' and all its contents to prevent
+        // it from getting moved, or pause the GC for the duration of the 'RenderBatch()' call.
+        // The key mitigation is that the JS-side code always processes renderbatches synchronously
+        // and never calls back into .NET during that process, so GC cannot run (assuming it would
+        // only run on the current thread).
+        // As an early-warning system in case we accidentally introduce bugs and violate that rule,
+        // or for edge cases where user code can be invoked during rendering (e.g., DOM mutation
+        // observers) we further enforce it on the JS side using a notion of "locking the heap"
+        // during rendering, which prevents any JS-to-.NET calls that go through Blazor APIs such
+        // as DotNet.invokeMethod or event handlers.
+        var batchCopy = batch;
+        RenderBatch(RendererId, Unsafe.AsPointer(ref batchCopy));
 
         if (WebAssemblyCallQueue.HasUnstartedWork)
         {
@@ -124,9 +184,19 @@ internal sealed partial class WebAssemblyRenderer : WebRenderer
         }
     }
 
+    protected override IComponent ResolveComponentForRenderMode([DynamicallyAccessedMembers(Component)] Type componentType, int? parentComponentId, IComponentActivator componentActivator, IComponentRenderMode renderMode)
+        => renderMode switch
+        {
+            InteractiveWebAssemblyRenderMode or InteractiveAutoRenderMode => componentActivator.CreateInstance(componentType),
+            _ => throw new NotSupportedException($"Cannot create a component of type '{componentType}' because its render mode '{renderMode}' is not supported by WebAssembly rendering."),
+        };
+
     private static partial class Log
     {
         [LoggerMessage(100, LogLevel.Critical, "Unhandled exception rendering component: {Message}", EventName = "ExceptionRenderingComponent")]
         public static partial void UnhandledExceptionRenderingComponent(ILogger logger, string message, Exception exception);
     }
+
+    [JSImport("Blazor._internal.renderBatch", "blazor-internal")]
+    private static unsafe partial void RenderBatch(int id, void* batch);
 }

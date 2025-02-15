@@ -16,8 +16,8 @@ public class DefaultRequestDecompressionProviderTests
     [Theory]
     [InlineData("br", typeof(BrotliStream))]
     [InlineData("BR", typeof(BrotliStream))]
-    [InlineData("deflate", typeof(DeflateStream))]
-    [InlineData("DEFLATE", typeof(DeflateStream))]
+    [InlineData("deflate", typeof(ZLibStream))]
+    [InlineData("DEFLATE", typeof(ZLibStream))]
     [InlineData("gzip", typeof(GZipStream))]
     [InlineData("GZIP", typeof(GZipStream))]
     public void GetDecompressionProvider_SupportedContentEncoding_ReturnsProvider(
@@ -45,7 +45,7 @@ public class DefaultRequestDecompressionProviderTests
             $"The request will be decompressed with '{contentEncoding.ToLowerInvariant()}'.");
 
         var contentEncodingHeader = httpContext.Request.Headers.ContentEncoding;
-        Assert.Empty(contentEncodingHeader);
+        Assert.Equal(0, contentEncodingHeader.Count);
     }
 
     [Fact]
@@ -70,7 +70,7 @@ public class DefaultRequestDecompressionProviderTests
             "The Content-Encoding header is empty or not specified. Skipping request decompression.");
 
         var contentEncodingHeader = httpContext.Request.Headers.ContentEncoding;
-        Assert.Empty(contentEncodingHeader);
+        Assert.Equal(0, contentEncodingHeader.Count);
     }
 
     [Fact]

@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 #if (GenerateApi)
 using Microsoft.Identity.Web;
+using Microsoft.Identity.Abstractions;
 #endif
 #if (OrganizationalAuth || IndividualB2CAuth)
 using Microsoft.Identity.Web.Resource;
@@ -27,21 +28,21 @@ namespace Company.WebApplication1.Controllers;
 #endif
 public class WeatherForecastController : ControllerBase
 {
-    private static readonly string[] Summaries = new[]
-    {
+    private static readonly string[] Summaries =
+    [
         "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-    };
+    ];
 
     private readonly ILogger<WeatherForecastController> _logger;
 
 #if (GenerateApi)
-    private readonly IDownstreamWebApi _downstreamWebApi;
+    private readonly IDownstreamApi _downstreamApi;
 
     public WeatherForecastController(ILogger<WeatherForecastController> logger,
-                            IDownstreamWebApi downstreamWebApi)
+                            IDownstreamApi downstreamApi)
     {
         _logger = logger;
-        _downstreamWebApi = downstreamWebApi;
+        _downstreamApi = downstreamApi;
     }
 
 #if (EnableOpenAPI)
@@ -51,7 +52,7 @@ public class WeatherForecastController : ControllerBase
 #endif
     public async Task<IEnumerable<WeatherForecast>> Get()
     {
-        using var response = await _downstreamWebApi.CallWebApiForUserAsync("DownstreamApi").ConfigureAwait(false);
+        using var response = await _downstreamApi.CallApiForUserAsync("DownstreamApi").ConfigureAwait(false);
         if (response.StatusCode == System.Net.HttpStatusCode.OK)
         {
             var apiResult = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
@@ -89,7 +90,7 @@ public class WeatherForecastController : ControllerBase
 #endif
     public async Task<IEnumerable<WeatherForecast>> Get()
     {
-        var user = await _graphServiceClient.Me.Request().GetAsync();
+        var user = await _graphServiceClient.Me.GetAsync();
 
         return Enumerable.Range(1, 5).Select(index => new WeatherForecast
         {

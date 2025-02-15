@@ -3,6 +3,7 @@
     <TargetFramework>$(DefaultNetCoreTargetFramework)</TargetFramework>
     <IsPackable>false</IsPackable>
     <OutputType>Exe</OutputType>
+    <PublishTrimmed>true</PublishTrimmed>
   </PropertyGroup>
 
   <Import Project="$(RepoRoot)eng\TrimmableProjects.props" />
@@ -17,7 +18,7 @@
     <Reference Include="System.Security.Permissions" />
     <Reference Include="System.Threading.AccessControl" />
   </ItemGroup>
-  <Target Name="ILLinkTrimProjects" DependsOnTargets="ResolveReferences" AfterTargets="Build" Condition="'$(DotNetBuildFromSource)' != 'true' AND '$(SkipTestBuild)' != 'true'">
+  <Target Name="ILLinkTrimProjects" DependsOnTargets="ResolveReferences" AfterTargets="Build" Condition="'$(DotNetBuildSourceOnly)' != 'true' AND '$(SkipTestBuild)' != 'true'">
     <PropertyGroup>
       <LibrariesTrimmedArtifactsPath>$(TargetDir)linked\</LibrariesTrimmedArtifactsPath>
       <!-- Link all assemblies -->

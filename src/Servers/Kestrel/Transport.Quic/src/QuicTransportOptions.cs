@@ -2,7 +2,6 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System.Runtime.Versioning;
-using Microsoft.AspNetCore.Server.Kestrel.Transport.Quic.Internal;
 
 namespace Microsoft.AspNetCore.Server.Kestrel.Transport.Quic;
 
@@ -69,16 +68,17 @@ public sealed class QuicTransportOptions
         }
     }
 
-    private static void ValidateErrorCode(long errorCode)
+    internal static void ValidateErrorCode(long errorCode)
     {
         const long MinErrorCode = 0;
         const long MaxErrorCode = (1L << 62) - 1;
 
         if (errorCode < MinErrorCode || errorCode > MaxErrorCode)
         {
-            throw new ArgumentOutOfRangeException(nameof(errorCode), errorCode, $"A value between {MinErrorCode} and {MaxErrorCode} is required.");
+            // Print the values in hex since the max is unintelligible in decimal
+            throw new ArgumentOutOfRangeException(nameof(errorCode), errorCode, $"A value between 0x{MinErrorCode:x} and 0x{MaxErrorCode:x} is required.");
         }
     }
 
-    internal ISystemClock SystemClock = new SystemClock();
+    internal TimeProvider TimeProvider = TimeProvider.System;
 }

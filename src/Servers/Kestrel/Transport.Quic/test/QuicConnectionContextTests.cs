@@ -8,9 +8,10 @@ using System.Text;
 using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.Connections.Features;
 using Microsoft.AspNetCore.Internal;
+using Microsoft.AspNetCore.InternalTesting;
 using Microsoft.AspNetCore.Server.Kestrel.Transport.Quic.Internal;
-using Microsoft.AspNetCore.Testing;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Time.Testing;
 
 namespace Microsoft.AspNetCore.Server.Kestrel.Transport.Quic.Tests;
 
@@ -324,7 +325,7 @@ public class QuicConnectionContextTests : TestApplicationErrorLoggerLoggedTest
         var quicConnectionContext = Assert.IsType<QuicConnectionContext>(serverConnection);
         Assert.Equal(0, quicConnectionContext.StreamPool.Count);
 
-        var clientStream = await clientConnection.OpenOutboundStreamAsync(QuicStreamType.Bidirectional);
+        await using var clientStream = await clientConnection.OpenOutboundStreamAsync(QuicStreamType.Bidirectional);
         await clientStream.WriteAsync(TestData, completeWrites: true).DefaultTimeout();
         var serverStream = await serverConnection.AcceptAsync().DefaultTimeout();
         var readResult = await serverStream.Transport.Input.ReadAtLeastAsync(TestData.Length).DefaultTimeout();
@@ -367,7 +368,7 @@ public class QuicConnectionContextTests : TestApplicationErrorLoggerLoggedTest
         var quicConnectionContext = Assert.IsType<QuicConnectionContext>(serverConnection);
         Assert.Equal(0, quicConnectionContext.StreamPool.Count);
 
-        var clientStream = await clientConnection.OpenOutboundStreamAsync(QuicStreamType.Bidirectional);
+        await using var clientStream = await clientConnection.OpenOutboundStreamAsync(QuicStreamType.Bidirectional);
         await clientStream.WriteAsync(TestData, completeWrites: true).DefaultTimeout();
         var serverStream = await serverConnection.AcceptAsync().DefaultTimeout();
         var readResult = await serverStream.Transport.Input.ReadAtLeastAsync(TestData.Length).DefaultTimeout();
@@ -412,7 +413,7 @@ public class QuicConnectionContextTests : TestApplicationErrorLoggerLoggedTest
         var quicConnectionContext = Assert.IsType<QuicConnectionContext>(serverConnection);
         Assert.Equal(0, quicConnectionContext.StreamPool.Count);
 
-        var clientStream = await clientConnection.OpenOutboundStreamAsync(QuicStreamType.Bidirectional);
+        await using var clientStream = await clientConnection.OpenOutboundStreamAsync(QuicStreamType.Bidirectional);
         await clientStream.WriteAsync(TestData).DefaultTimeout();
 
         var serverStream = await serverConnection.AcceptAsync().DefaultTimeout();
@@ -461,7 +462,7 @@ public class QuicConnectionContextTests : TestApplicationErrorLoggerLoggedTest
         var quicConnectionContext = Assert.IsType<QuicConnectionContext>(serverConnection);
         Assert.Equal(0, quicConnectionContext.StreamPool.Count);
 
-        var clientStream = await clientConnection.OpenOutboundStreamAsync(QuicStreamType.Bidirectional);
+        await using var clientStream = await clientConnection.OpenOutboundStreamAsync(QuicStreamType.Bidirectional);
         await clientStream.WriteAsync(TestData).DefaultTimeout();
 
         var serverStream = await serverConnection.AcceptAsync().DefaultTimeout();
@@ -499,15 +500,13 @@ public class QuicConnectionContextTests : TestApplicationErrorLoggerLoggedTest
 
     [ConditionalFact]
     [MsQuicSupported]
-    [QuarantinedTest("https://github.com/dotnet/aspnetcore/issues/37862")]
     public async Task StreamPool_Heartbeat_ExpiredStreamRemoved()
     {
         // Arrange
         using var httpEventSource = new HttpEventSourceListener(LoggerFactory);
 
-        var now = new DateTimeOffset(2021, 7, 6, 12, 0, 0, TimeSpan.Zero);
-        var testSystemClock = new TestSystemClock { UtcNow = now };
-        await using var connectionListener = await QuicTestHelpers.CreateConnectionListenerFactory(LoggerFactory, testSystemClock);
+        var timeProvider = new FakeTimeProvider();
+        await using var connectionListener = await QuicTestHelpers.CreateConnectionListenerFactory(LoggerFactory, timeProvider);
 
         var options = QuicTestHelpers.CreateClientConnectionOptions(connectionListener.EndPoint);
         await using var clientConnection = await QuicConnection.ConnectAsync(options);
@@ -526,10 +525,9 @@ public class QuicConnectionContextTests : TestApplicationErrorLoggerLoggedTest
         Assert.Equal(1, quicConnectionContext.StreamPool.Count);
         QuicStreamContext pooledStream = quicConnectionContext.StreamPool._array[0];
         Assert.Same(stream1, pooledStream);
-        Assert.Equal(now.Ticks + QuicConnectionContext.StreamPoolExpiryTicks, pooledStream.PoolExpirationTicks);
+        Assert.Equal(timeProvider.GetTimestamp() + QuicConnectionContext.StreamPoolExpirySeconds * timeProvider.TimestampFrequency, pooledStream.PoolExpirationTimestamp);
 
-        now = now.AddMilliseconds(100);
-        testSystemClock.UtcNow = now;
+        timeProvider.Advance(TimeSpan.FromSeconds(0.1));
         testHeartbeatFeature.RaiseHeartbeat();
         // Not removed.
         Assert.Equal(1, quicConnectionContext.StreamPool.Count);
@@ -539,18 +537,16 @@ public class QuicConnectionContextTests : TestApplicationErrorLoggerLoggedTest
         Assert.Equal(1, quicConnectionContext.StreamPool.Count);
         pooledStream = quicConnectionContext.StreamPool._array[0];
         Assert.Same(stream1, pooledStream);
-        Assert.Equal(now.Ticks + QuicConnectionContext.StreamPoolExpiryTicks, pooledStream.PoolExpirationTicks);
+        Assert.Equal(timeProvider.GetTimestamp() + QuicConnectionContext.StreamPoolExpirySeconds * timeProvider.TimestampFrequency, pooledStream.PoolExpirationTimestamp);
 
         Assert.Same(stream1, stream2);
 
-        now = now.AddTicks(QuicConnectionContext.StreamPoolExpiryTicks);
-        testSystemClock.UtcNow = now;
+        timeProvider.Advance(TimeSpan.FromSeconds(QuicConnectionContext.StreamPoolExpirySeconds));
         testHeartbeatFeature.RaiseHeartbeat();
         // Not removed.
         Assert.Equal(1, quicConnectionContext.StreamPool.Count);
 
-        now = now.AddTicks(1);
-        testSystemClock.UtcNow = now;
+        timeProvider.Advance(TimeSpan.FromTicks(1));
         testHeartbeatFeature.RaiseHeartbeat();
         // Removed.
         Assert.Equal(0, quicConnectionContext.StreamPool.Count);
@@ -558,9 +554,12 @@ public class QuicConnectionContextTests : TestApplicationErrorLoggerLoggedTest
 
     [ConditionalFact]
     [MsQuicSupported]
+    [QuarantinedTest("https://github.com/dotnet/aspnetcore/issues/56517")]
     public async Task StreamPool_ManyConcurrentStreams_StreamPoolFull()
     {
         // Arrange
+        using var httpEventSource = new HttpEventSourceListener(LoggerFactory);
+
         await using var connectionListener = await QuicTestHelpers.CreateConnectionListenerFactory(LoggerFactory);
 
         var options = QuicTestHelpers.CreateClientConnectionOptions(connectionListener.EndPoint);
@@ -583,57 +582,84 @@ public class QuicConnectionContextTests : TestApplicationErrorLoggerLoggedTest
         const int StreamsSent = 101;
         for (var i = 0; i < StreamsSent; i++)
         {
-            streamTasks.Add(SendStream(requestState));
+            streamTasks.Add(SendStream(Logger, streamIndex: i, requestState));
         }
 
+        Logger.LogInformation("Waiting for all connections to be received by the server.");
         await allConnectionsOnServerTcs.Task.DefaultTimeout();
         pauseCompleteTcs.SetResult();
 
+        Logger.LogInformation("Waiting for all stream tasks.");
         await Task.WhenAll(streamTasks).DefaultTimeout();
+        Logger.LogInformation("Stream tasks finished.");
 
         // Assert
         // Up to 100 streams are pooled.
         Assert.Equal(100, quicConnectionContext.StreamPool.Count);
 
-        static async Task SendStream(RequestState requestState)
+        static async Task SendStream(ILogger logger, int streamIndex, RequestState requestState)
         {
-            var clientStream = await requestState.QuicConnection.OpenOutboundStreamAsync(QuicStreamType.Bidirectional);
-            await clientStream.WriteAsync(TestData, completeWrites: true).DefaultTimeout();
-            var serverStream = await requestState.ServerConnection.AcceptAsync().DefaultTimeout();
-            var readResult = await serverStream.Transport.Input.ReadAtLeastAsync(TestData.Length).DefaultTimeout();
-            serverStream.Transport.Input.AdvanceTo(readResult.Buffer.End);
-
-            // Input should be completed.
-            readResult = await serverStream.Transport.Input.ReadAsync();
-            Assert.True(readResult.IsCompleted);
-
-            lock (requestState)
+            try
             {
-                requestState.ActiveConcurrentConnections++;
-                if (requestState.ActiveConcurrentConnections == StreamsSent)
+                logger.LogInformation($"{StreamId(streamIndex)}: Client opening outbound stream.");
+                await using var clientStream = await requestState.QuicConnection.OpenOutboundStreamAsync(QuicStreamType.Bidirectional);
+                logger.LogInformation($"{StreamId(streamIndex)}: Client writing to stream.");
+                await clientStream.WriteAsync(TestData, completeWrites: true).DefaultTimeout();
+
+                logger.LogInformation($"{StreamId(streamIndex)}: Server accepting incoming stream.");
+                var serverStream = await requestState.ServerConnection.AcceptAsync().DefaultTimeout();
+                logger.LogInformation($"{StreamId(streamIndex)}: Server reading data.");
+                var readResult = await serverStream.Transport.Input.ReadAtLeastAsync(TestData.Length).DefaultTimeout();
+                serverStream.Transport.Input.AdvanceTo(readResult.Buffer.End);
+
+                // Input should be completed.
+                logger.LogInformation($"{StreamId(streamIndex)}: Server verifying all data received.");
+                readResult = await serverStream.Transport.Input.ReadAsync();
+                Assert.True(readResult.IsCompleted);
+
+                lock (requestState)
                 {
-                    requestState.AllConnectionsOnServerTcs.SetResult();
+                    requestState.ActiveConcurrentConnections++;
+
+                    logger.LogInformation($"{StreamId(streamIndex)}: Increasing active concurrent connections to {requestState.ActiveConcurrentConnections}.");
+                    if (requestState.ActiveConcurrentConnections == StreamsSent)
+                    {
+                        logger.LogInformation($"{StreamId(streamIndex)}: All connections on server.");
+                        requestState.AllConnectionsOnServerTcs.SetResult();
+                    }
                 }
+
+                await requestState.PauseCompleteTask;
+
+                // Complete reading and writing.
+                logger.LogInformation($"{StreamId(streamIndex)}: Server completing reading and writing.");
+                await serverStream.Transport.Input.CompleteAsync();
+                await serverStream.Transport.Output.CompleteAsync();
+
+                logger.LogInformation($"{StreamId(streamIndex)}: Client verifying all data received.");
+                var count = await clientStream.ReadAsync(new byte[1024]);
+                Assert.Equal(0, count);
+
+                logger.LogInformation($"{StreamId(streamIndex)}: Diposing {nameof(QuicStreamContext)}.");
+                var quicStreamContext = Assert.IsType<QuicStreamContext>(serverStream);
+
+                // Both send and receive loops have exited.
+                await quicStreamContext._processingTask.DefaultTimeout();
+                await quicStreamContext.DisposeAsync();
+                quicStreamContext.Dispose();
             }
-
-            await requestState.PauseCompleteTask;
-
-            // Complete reading and writing.
-            await serverStream.Transport.Input.CompleteAsync();
-            await serverStream.Transport.Output.CompleteAsync();
-
-            var quicStreamContext = Assert.IsType<QuicStreamContext>(serverStream);
-
-            // Both send and receive loops have exited.
-            await quicStreamContext._processingTask.DefaultTimeout();
-            await quicStreamContext.DisposeAsync();
-            quicStreamContext.Dispose();
+            catch (Exception ex)
+            {
+                logger.LogError(ex, $"{StreamId(streamIndex)}: Error.");
+                throw;
+            }
         }
+
+        static string StreamId(int index) => $"Stream-{index}";
     }
 
     [ConditionalFact]
     [MsQuicSupported]
-    [QuarantinedTest("https://github.com/dotnet/aspnetcore/issues/38998")]
     public async Task PersistentState_StreamsReused_StatePersisted()
     {
         using var httpEventSource = new HttpEventSourceListener(LoggerFactory);
@@ -648,7 +674,7 @@ public class QuicConnectionContextTests : TestApplicationErrorLoggerLoggedTest
 
         // Act
         Logger.LogInformation("Client starting stream 1");
-        var clientStream1 = await clientConnection.OpenOutboundStreamAsync(QuicStreamType.Bidirectional);
+        await using var clientStream1 = await clientConnection.OpenOutboundStreamAsync(QuicStreamType.Bidirectional);
         await clientStream1.WriteAsync(TestData, completeWrites: true).DefaultTimeout();
 
         Logger.LogInformation("Server accept stream 1");
@@ -676,7 +702,7 @@ public class QuicConnectionContextTests : TestApplicationErrorLoggerLoggedTest
         quicStreamContext1.Dispose();
 
         Logger.LogInformation("Client starting stream 2");
-        var clientStream2 = await clientConnection.OpenOutboundStreamAsync(QuicStreamType.Bidirectional);
+        await using var clientStream2 = await clientConnection.OpenOutboundStreamAsync(QuicStreamType.Bidirectional);
         await clientStream2.WriteAsync(TestData, completeWrites: true).DefaultTimeout();
 
         Logger.LogInformation("Server accept stream 2");
@@ -711,6 +737,33 @@ public class QuicConnectionContextTests : TestApplicationErrorLoggerLoggedTest
         Assert.Equal(true, state);
     }
 
+    [ConditionalTheory]
+    [MsQuicSupported]
+    [InlineData(-1L)] // Too small
+    [InlineData(1L << 62)] // Too big
+    public async Task IProtocolErrorFeature_InvalidErrorCode(long errorCode)
+    {
+        // Arrange
+        await using var connectionListener = await QuicTestHelpers.CreateConnectionListenerFactory(LoggerFactory);
+
+        var options = QuicTestHelpers.CreateClientConnectionOptions(connectionListener.EndPoint);
+        await using var clientConnection = await QuicConnection.ConnectAsync(options);
+
+        await using var serverConnection = await connectionListener.AcceptAndAddFeatureAsync().DefaultTimeout();
+
+        // Act
+        await using var clientStream = await clientConnection.OpenOutboundStreamAsync(QuicStreamType.Bidirectional);
+        await clientStream.WriteAsync(TestData).DefaultTimeout();
+
+        var serverStream = await serverConnection.AcceptAsync().DefaultTimeout();
+
+        var protocolErrorCodeFeature = serverConnection.Features.Get<IProtocolErrorCodeFeature>();
+
+        // Assert
+        Assert.IsType<QuicConnectionContext>(protocolErrorCodeFeature);
+        Assert.Throws<ArgumentOutOfRangeException>(() => protocolErrorCodeFeature.Error = errorCode);
+    }
+
     private record RequestState(
         QuicConnection QuicConnection,
         MultiplexedConnectionContext ServerConnection,
@@ -719,11 +772,6 @@ public class QuicConnectionContextTests : TestApplicationErrorLoggerLoggedTest
     {
         public int ActiveConcurrentConnections { get; set; }
     };
-
-    private class TestSystemClock : ISystemClock
-    {
-        public DateTimeOffset UtcNow { get; set; }
-    }
 
     private class TestHeartbeatFeature : IConnectionHeartbeatFeature
     {

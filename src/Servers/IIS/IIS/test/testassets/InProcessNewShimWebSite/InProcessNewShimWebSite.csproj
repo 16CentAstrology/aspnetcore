@@ -16,7 +16,7 @@
     <!-- ReferenceTestTasks is workaround for https://github.com/dotnet/sdk/issues/2482 -->
     <TestAssetPublishProfile Include="Standalone-x64"
         Condition=" '$(TargetArchitecture)' != 'arm' "
-        Properties="RuntimeIdentifier=win-x64;ReferenceTestTasks=false" />
+        Properties="SelfContained=true;RuntimeIdentifier=win-x64;ReferenceTestTasks=false" />
   </ItemGroup>
 
   <ItemGroup>
@@ -57,9 +57,6 @@
       <AllowExplicitReference>true</AllowExplicitReference>
     </PackageReference>
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="2.2.0" >
-      <AllowExplicitReference>true</AllowExplicitReference>
-    </PackageReference>
-    <PackageReference Include="System.Private.Uri" Version="4.3.2" >
       <AllowExplicitReference>true</AllowExplicitReference>
     </PackageReference>
     <PackageReference Include="System.Text.Encodings.Web" Version="4.5.1" >

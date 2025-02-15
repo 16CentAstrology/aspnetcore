@@ -2,7 +2,6 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System.Reflection;
-using Microsoft.AspNetCore.Mvc.Abstractions;
 
 namespace Microsoft.AspNetCore.Mvc.ModelBinding.Metadata;
 
@@ -32,10 +31,7 @@ public readonly struct ModelMetadataIdentity : IEquatable<ModelMetadataIdentity>
     /// <returns>A <see cref="ModelMetadataIdentity"/>.</returns>
     public static ModelMetadataIdentity ForType(Type modelType)
     {
-        if (modelType == null)
-        {
-            throw new ArgumentNullException(nameof(modelType));
-        }
+        ArgumentNullException.ThrowIfNull(modelType);
 
         return new ModelMetadataIdentity(modelType);
     }
@@ -53,20 +49,9 @@ public readonly struct ModelMetadataIdentity : IEquatable<ModelMetadataIdentity>
         string name,
         Type containerType)
     {
-        if (modelType == null)
-        {
-            throw new ArgumentNullException(nameof(modelType));
-        }
-
-        if (containerType == null)
-        {
-            throw new ArgumentNullException(nameof(containerType));
-        }
-
-        if (string.IsNullOrEmpty(name))
-        {
-            throw new ArgumentException(Resources.ArgumentCannotBeNullOrEmpty, nameof(name));
-        }
+        ArgumentNullException.ThrowIfNull(modelType);
+        ArgumentNullException.ThrowIfNull(containerType);
+        ArgumentException.ThrowIfNullOrEmpty(name);
 
         return new ModelMetadataIdentity(modelType, name, containerType);
     }
@@ -83,20 +68,9 @@ public readonly struct ModelMetadataIdentity : IEquatable<ModelMetadataIdentity>
         Type modelType,
         Type containerType)
     {
-        if (propertyInfo == null)
-        {
-            throw new ArgumentNullException(nameof(propertyInfo));
-        }
-
-        if (modelType == null)
-        {
-            throw new ArgumentNullException(nameof(modelType));
-        }
-
-        if (containerType == null)
-        {
-            throw new ArgumentNullException(nameof(containerType));
-        }
+        ArgumentNullException.ThrowIfNull(propertyInfo);
+        ArgumentNullException.ThrowIfNull(modelType);
+        ArgumentNullException.ThrowIfNull(containerType);
 
         return new ModelMetadataIdentity(modelType, propertyInfo.Name, containerType, fieldInfo: propertyInfo);
     }
@@ -118,15 +92,8 @@ public readonly struct ModelMetadataIdentity : IEquatable<ModelMetadataIdentity>
     /// <returns>A <see cref="ModelMetadataIdentity"/>.</returns>
     public static ModelMetadataIdentity ForParameter(ParameterInfo parameter, Type modelType)
     {
-        if (parameter == null)
-        {
-            throw new ArgumentNullException(nameof(parameter));
-        }
-
-        if (modelType == null)
-        {
-            throw new ArgumentNullException(nameof(modelType));
-        }
+        ArgumentNullException.ThrowIfNull(parameter);
+        ArgumentNullException.ThrowIfNull(modelType);
 
         return new ModelMetadataIdentity(modelType, parameter.Name, fieldInfo: parameter);
     }
@@ -140,15 +107,8 @@ public readonly struct ModelMetadataIdentity : IEquatable<ModelMetadataIdentity>
     /// <returns>A <see cref="ModelMetadataIdentity"/>.</returns>
     public static ModelMetadataIdentity ForConstructor(ConstructorInfo constructor, Type modelType)
     {
-        if (constructor == null)
-        {
-            throw new ArgumentNullException(nameof(constructor));
-        }
-
-        if (modelType == null)
-        {
-            throw new ArgumentNullException(nameof(modelType));
-        }
+        ArgumentNullException.ThrowIfNull(constructor);
+        ArgumentNullException.ThrowIfNull(modelType);
 
         return new ModelMetadataIdentity(modelType, constructor.Name, constructorInfo: constructor);
     }

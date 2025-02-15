@@ -2,7 +2,7 @@
   <PropertyGroup>
     <!-- Use fixed version instead of $(DefaultNetCoreTargetFramework) to avoid needing workarounds set up here. -->
     <TargetFramework>net5.0</TargetFramework>
-    <ExcludeFromSourceBuild>false</ExcludeFromSourceBuild>
+    <ExcludeFromSourceOnlyBuild>false</ExcludeFromSourceOnlyBuild>
 
     <ConfigDirectory>$([MSBuild]::NormalizeDirectory('$(RepoRoot)', '.config'))</ConfigDirectory>
   </PropertyGroup>
@@ -26,7 +26,8 @@
         MicrosoftNETCoreAppRuntimeVersion=$(MicrosoftNETCoreAppRuntimeVersion);
         MicrosoftPlaywrightCLIVersion=$(MicrosoftPlaywrightCLIVersion);
         LibNetHostAppPackVersion=$(BundledNETCoreAppPackageVersion);
-        SupportedRuntimeIdentifiers=$(SupportedRuntimeIdentifiers.Trim())
+        SupportedRuntimeIdentifiers=$([MSBuild]::Escape($(SupportedRuntimeIdentifiers)));
+        ArtifactsShippingPackagesDir=$(ArtifactsShippingPackagesDir)
       </_TemplateProperties>
     </PropertyGroup>
 

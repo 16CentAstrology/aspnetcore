@@ -9,6 +9,8 @@ using Microsoft.AspNetCore.Mvc;
 var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
 
+app.Logger.LogInformation($"Current process ID: {Environment.ProcessId}");
+
 string Plaintext() => "Hello, World!";
 app.MapGet("/plaintext", Plaintext);
 
@@ -27,7 +29,8 @@ inner.AddEndpointFilterFactory((routeContext, next) =>
 
     return async invocationContext =>
     {
-        tags ??= invocationContext.HttpContext.GetEndpoint()?.Metadata.GetMetadata<ITagsMetadata>()?.Tags ?? Array.Empty<string>();
+        var endpoint = invocationContext.HttpContext.GetEndpoint();
+        tags ??= endpoint?.Metadata.GetMetadata<ITagsMetadata>()?.Tags ?? Array.Empty<string>();
 
         Console.WriteLine("Running filter!");
         var result = await next(invocationContext);
@@ -55,7 +58,7 @@ var superNested = inner.MapGroup("/group/{groupName}")
 
 superNested.MapGet("/", (string groupName, string nestedName) =>
 {
-   return $"Hello from {groupName}:{nestedName}!";
+    return $"Hello from {groupName}:{nestedName}!";
 });
 
 object Json() => new { message = "Hello, World!" };
@@ -89,6 +92,7 @@ app.MapGet("/problem/{problemType}", (string problemType) => problemType switch
     });
 
 app.MapPost("/todos", (TodoBindable todo) => todo);
+app.MapGet("/todos", () => new Todo[] { new Todo(1, "Walk the dog"), new Todo(2, "Come back home") });
 
 app.Run();
 

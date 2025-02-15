@@ -23,7 +23,9 @@
     <Reference Include="Microsoft.AspNetCore.HttpOverrides" />
     <Reference Include="Microsoft.Extensions.Logging.Abstractions" />
     <Reference Include="Microsoft.Extensions.Options" />
-    <Reference Include="System.IO.Pipelines" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Microsoft.AspNetCore.Server.IISIntegration.Tests" />
+  </ItemGroup>
 </Project>

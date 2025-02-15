@@ -1,13 +1,13 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq.Expressions;
 using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc.Core;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.Mvc.ModelBinding.Validation;
@@ -78,10 +78,7 @@ public abstract class ControllerBase
         }
         set
         {
-            if (value == null)
-            {
-                throw new ArgumentNullException(nameof(value));
-            }
+            ArgumentNullException.ThrowIfNull(value);
 
             _controllerContext = value;
         }
@@ -90,6 +87,7 @@ public abstract class ControllerBase
     /// <summary>
     /// Gets or sets the <see cref="IModelMetadataProvider"/>.
     /// </summary>
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
     public IModelMetadataProvider MetadataProvider
     {
         get
@@ -103,10 +101,7 @@ public abstract class ControllerBase
         }
         set
         {
-            if (value == null)
-            {
-                throw new ArgumentNullException(nameof(value));
-            }
+            ArgumentNullException.ThrowIfNull(value);
 
             _metadataProvider = value;
         }
@@ -115,6 +110,7 @@ public abstract class ControllerBase
     /// <summary>
     /// Gets or sets the <see cref="IModelBinderFactory"/>.
     /// </summary>
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
     public IModelBinderFactory ModelBinderFactory
     {
         get
@@ -128,10 +124,7 @@ public abstract class ControllerBase
         }
         set
         {
-            if (value == null)
-            {
-                throw new ArgumentNullException(nameof(value));
-            }
+            ArgumentNullException.ThrowIfNull(value);
 
             _modelBinderFactory = value;
         }
@@ -140,6 +133,7 @@ public abstract class ControllerBase
     /// <summary>
     /// Gets or sets the <see cref="IUrlHelper"/>.
     /// </summary>
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
     public IUrlHelper Url
     {
         get
@@ -154,10 +148,7 @@ public abstract class ControllerBase
         }
         set
         {
-            if (value == null)
-            {
-                throw new ArgumentNullException(nameof(value));
-            }
+            ArgumentNullException.ThrowIfNull(value);
 
             _url = value;
         }
@@ -166,6 +157,7 @@ public abstract class ControllerBase
     /// <summary>
     /// Gets or sets the <see cref="IObjectModelValidator"/>.
     /// </summary>
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
     public IObjectModelValidator ObjectValidator
     {
         get
@@ -179,10 +171,7 @@ public abstract class ControllerBase
         }
         set
         {
-            if (value == null)
-            {
-                throw new ArgumentNullException(nameof(value));
-            }
+            ArgumentNullException.ThrowIfNull(value);
 
             _objectValidator = value;
         }
@@ -191,6 +180,7 @@ public abstract class ControllerBase
     /// <summary>
     /// Gets or sets the <see cref="ProblemDetailsFactory"/>.
     /// </summary>
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
     public ProblemDetailsFactory ProblemDetailsFactory
     {
         get
@@ -204,10 +194,7 @@ public abstract class ControllerBase
         }
         set
         {
-            if (value == null)
-            {
-                throw new ArgumentNullException(nameof(value));
-            }
+            ArgumentNullException.ThrowIfNull(value);
 
             _problemDetailsFactory = value;
         }
@@ -233,7 +220,7 @@ public abstract class ControllerBase
         => new StatusCodeResult(statusCode);
 
     /// <summary>
-    /// Creates a <see cref="ObjectResult"/> object by specifying a <paramref name="statusCode"/> and <paramref name="value"/>
+    /// Creates an <see cref="ObjectResult"/> object by specifying a <paramref name="statusCode"/> and <paramref name="value"/>
     /// </summary>
     /// <param name="statusCode">The status code to set on the response.</param>
     /// <param name="value">The value to set on the <see cref="ObjectResult"/>.</param>
@@ -314,7 +301,7 @@ public abstract class ControllerBase
         => new NoContentResult();
 
     /// <summary>
-    /// Creates a <see cref="OkResult"/> object that produces an empty <see cref="StatusCodes.Status200OK"/> response.
+    /// Creates an <see cref="OkResult"/> object that produces an empty <see cref="StatusCodes.Status200OK"/> response.
     /// </summary>
     /// <returns>The created <see cref="OkResult"/> for the response.</returns>
     [NonAction]
@@ -322,7 +309,7 @@ public abstract class ControllerBase
         => new OkResult();
 
     /// <summary>
-    /// Creates an <see cref="OkObjectResult"/> object that produces an <see cref="StatusCodes.Status200OK"/> response.
+    /// Creates an <see cref="OkObjectResult"/> object that produces a <see cref="StatusCodes.Status200OK"/> response.
     /// </summary>
     /// <param name="value">The content value to format in the entity body.</param>
     /// <returns>The created <see cref="OkObjectResult"/> for the response.</returns>
@@ -340,10 +327,7 @@ public abstract class ControllerBase
     [NonAction]
     public virtual RedirectResult Redirect([StringSyntax(StringSyntaxAttribute.Uri)] string url)
     {
-        if (string.IsNullOrEmpty(url))
-        {
-            throw new ArgumentException(Resources.ArgumentCannotBeNullOrEmpty, nameof(url));
-        }
+        ArgumentException.ThrowIfNullOrEmpty(url);
 
         return new RedirectResult(url);
     }
@@ -357,10 +341,7 @@ public abstract class ControllerBase
     [NonAction]
     public virtual RedirectResult RedirectPermanent([StringSyntax(StringSyntaxAttribute.Uri)] string url)
     {
-        if (string.IsNullOrEmpty(url))
-        {
-            throw new ArgumentException(Resources.ArgumentCannotBeNullOrEmpty, nameof(url));
-        }
+        ArgumentException.ThrowIfNullOrEmpty(url);
 
         return new RedirectResult(url, permanent: true);
     }
@@ -375,10 +356,7 @@ public abstract class ControllerBase
     [NonAction]
     public virtual RedirectResult RedirectPreserveMethod([StringSyntax(StringSyntaxAttribute.Uri)] string url)
     {
-        if (string.IsNullOrEmpty(url))
-        {
-            throw new ArgumentException(Resources.ArgumentCannotBeNullOrEmpty, nameof(url));
-        }
+        ArgumentException.ThrowIfNullOrEmpty(url);
 
         return new RedirectResult(url: url, permanent: false, preserveMethod: true);
     }
@@ -393,10 +371,7 @@ public abstract class ControllerBase
     [NonAction]
     public virtual RedirectResult RedirectPermanentPreserveMethod([StringSyntax(StringSyntaxAttribute.Uri)] string url)
     {
-        if (string.IsNullOrEmpty(url))
-        {
-            throw new ArgumentException(Resources.ArgumentCannotBeNullOrEmpty, nameof(url));
-        }
+        ArgumentException.ThrowIfNullOrEmpty(url);
 
         return new RedirectResult(url: url, permanent: true, preserveMethod: true);
     }
@@ -410,10 +385,7 @@ public abstract class ControllerBase
     [NonAction]
     public virtual LocalRedirectResult LocalRedirect([StringSyntax(StringSyntaxAttribute.Uri, UriKind.Relative)] string localUrl)
     {
-        if (string.IsNullOrEmpty(localUrl))
-        {
-            throw new ArgumentException(Resources.ArgumentCannotBeNullOrEmpty, nameof(localUrl));
-        }
+        ArgumentException.ThrowIfNullOrEmpty(localUrl);
 
         return new LocalRedirectResult(localUrl);
     }
@@ -427,10 +399,7 @@ public abstract class ControllerBase
     [NonAction]
     public virtual LocalRedirectResult LocalRedirectPermanent([StringSyntax(StringSyntaxAttribute.Uri, UriKind.Relative)] string localUrl)
     {
-        if (string.IsNullOrEmpty(localUrl))
-        {
-            throw new ArgumentException(Resources.ArgumentCannotBeNullOrEmpty, nameof(localUrl));
-        }
+        ArgumentException.ThrowIfNullOrEmpty(localUrl);
 
         return new LocalRedirectResult(localUrl, permanent: true);
     }
@@ -445,10 +414,7 @@ public abstract class ControllerBase
     [NonAction]
     public virtual LocalRedirectResult LocalRedirectPreserveMethod([StringSyntax(StringSyntaxAttribute.Uri, UriKind.Relative)] string localUrl)
     {
-        if (string.IsNullOrEmpty(localUrl))
-        {
-            throw new ArgumentException(Resources.ArgumentCannotBeNullOrEmpty, nameof(localUrl));
-        }
+        ArgumentException.ThrowIfNullOrEmpty(localUrl);
 
         return new LocalRedirectResult(localUrl: localUrl, permanent: false, preserveMethod: true);
     }
@@ -463,10 +429,7 @@ public abstract class ControllerBase
     [NonAction]
     public virtual LocalRedirectResult LocalRedirectPermanentPreserveMethod([StringSyntax(StringSyntaxAttribute.Uri, UriKind.Relative)] string localUrl)
     {
-        if (string.IsNullOrEmpty(localUrl))
-        {
-            throw new ArgumentException(Resources.ArgumentCannotBeNullOrEmpty, nameof(localUrl));
-        }
+        ArgumentException.ThrowIfNullOrEmpty(localUrl);
 
         return new LocalRedirectResult(localUrl: localUrl, permanent: true, preserveMethod: true);
     }
@@ -1057,10 +1020,7 @@ public abstract class ControllerBase
         object? routeValues = null,
         string? fragment = null)
     {
-        if (pageName == null)
-        {
-            throw new ArgumentNullException(nameof(pageName));
-        }
+        ArgumentNullException.ThrowIfNull(pageName);
 
         return new RedirectToPageResult(
             pageName: pageName,
@@ -1088,10 +1048,7 @@ public abstract class ControllerBase
         object? routeValues = null,
         string? fragment = null)
     {
-        if (pageName == null)
-        {
-            throw new ArgumentNullException(nameof(pageName));
-        }
+        ArgumentNullException.ThrowIfNull(pageName);
 
         return new RedirectToPageResult(
             pageName: pageName,
@@ -1751,7 +1708,7 @@ public abstract class ControllerBase
     #endregion
 
     /// <summary>
-    /// Creates an <see cref="UnauthorizedResult"/> that produces an <see cref="StatusCodes.Status401Unauthorized"/> response.
+    /// Creates an <see cref="UnauthorizedResult"/> that produces a <see cref="StatusCodes.Status401Unauthorized"/> response.
     /// </summary>
     /// <returns>The created <see cref="UnauthorizedResult"/> for the response.</returns>
     [NonAction]
@@ -1767,7 +1724,7 @@ public abstract class ControllerBase
         => new UnauthorizedObjectResult(value);
 
     /// <summary>
-    /// Creates an <see cref="NotFoundResult"/> that produces a <see cref="StatusCodes.Status404NotFound"/> response.
+    /// Creates a <see cref="NotFoundResult"/> that produces a <see cref="StatusCodes.Status404NotFound"/> response.
     /// </summary>
     /// <returns>The created <see cref="NotFoundResult"/> for the response.</returns>
     [NonAction]
@@ -1775,7 +1732,7 @@ public abstract class ControllerBase
         => new NotFoundResult();
 
     /// <summary>
-    /// Creates an <see cref="NotFoundObjectResult"/> that produces a <see cref="StatusCodes.Status404NotFound"/> response.
+    /// Creates a <see cref="NotFoundObjectResult"/> that produces a <see cref="StatusCodes.Status404NotFound"/> response.
     /// </summary>
     /// <returns>The created <see cref="NotFoundObjectResult"/> for the response.</returns>
     [NonAction]
@@ -1783,7 +1740,7 @@ public abstract class ControllerBase
         => new NotFoundObjectResult(value);
 
     /// <summary>
-    /// Creates an <see cref="BadRequestResult"/> that produces a <see cref="StatusCodes.Status400BadRequest"/> response.
+    /// Creates a <see cref="BadRequestResult"/> that produces a <see cref="StatusCodes.Status400BadRequest"/> response.
     /// </summary>
     /// <returns>The created <see cref="BadRequestResult"/> for the response.</returns>
     [NonAction]
@@ -1791,7 +1748,7 @@ public abstract class ControllerBase
         => new BadRequestResult();
 
     /// <summary>
-    /// Creates an <see cref="BadRequestObjectResult"/> that produces a <see cref="StatusCodes.Status400BadRequest"/> response.
+    /// Creates a <see cref="BadRequestObjectResult"/> that produces a <see cref="StatusCodes.Status400BadRequest"/> response.
     /// </summary>
     /// <param name="error">An error object to be returned to the client.</param>
     /// <returns>The created <see cref="BadRequestObjectResult"/> for the response.</returns>
@@ -1800,17 +1757,14 @@ public abstract class ControllerBase
         => new BadRequestObjectResult(error);
 
     /// <summary>
-    /// Creates an <see cref="BadRequestObjectResult"/> that produces a <see cref="StatusCodes.Status400BadRequest"/> response.
+    /// Creates a <see cref="BadRequestObjectResult"/> that produces a <see cref="StatusCodes.Status400BadRequest"/> response.
     /// </summary>
     /// <param name="modelState">The <see cref="ModelStateDictionary" /> containing errors to be returned to the client.</param>
     /// <returns>The created <see cref="BadRequestObjectResult"/> for the response.</returns>
     [NonAction]
     public virtual BadRequestObjectResult BadRequest([ActionResultObjectValue] ModelStateDictionary modelState)
     {
-        if (modelState == null)
-        {
-            throw new ArgumentNullException(nameof(modelState));
-        }
+        ArgumentNullException.ThrowIfNull(modelState);
 
         return new BadRequestObjectResult(modelState);
     }
@@ -1840,16 +1794,13 @@ public abstract class ControllerBase
     [NonAction]
     public virtual UnprocessableEntityObjectResult UnprocessableEntity([ActionResultObjectValue] ModelStateDictionary modelState)
     {
-        if (modelState == null)
-        {
-            throw new ArgumentNullException(nameof(modelState));
-        }
+        ArgumentNullException.ThrowIfNull(modelState);
 
         return new UnprocessableEntityObjectResult(modelState);
     }
 
     /// <summary>
-    /// Creates an <see cref="ConflictResult"/> that produces a <see cref="StatusCodes.Status409Conflict"/> response.
+    /// Creates a <see cref="ConflictResult"/> that produces a <see cref="StatusCodes.Status409Conflict"/> response.
     /// </summary>
     /// <returns>The created <see cref="ConflictResult"/> for the response.</returns>
     [NonAction]
@@ -1857,7 +1808,7 @@ public abstract class ControllerBase
         => new ConflictResult();
 
     /// <summary>
-    /// Creates an <see cref="ConflictObjectResult"/> that produces a <see cref="StatusCodes.Status409Conflict"/> response.
+    /// Creates a <see cref="ConflictObjectResult"/> that produces a <see cref="StatusCodes.Status409Conflict"/> response.
     /// </summary>
     /// <param name="error">Contains errors to be returned to the client.</param>
     /// <returns>The created <see cref="ConflictObjectResult"/> for the response.</returns>
@@ -1866,7 +1817,7 @@ public abstract class ControllerBase
         => new ConflictObjectResult(error);
 
     /// <summary>
-    /// Creates an <see cref="ConflictObjectResult"/> that produces a <see cref="StatusCodes.Status409Conflict"/> response.
+    /// Creates a <see cref="ConflictObjectResult"/> that produces a <see cref="StatusCodes.Status409Conflict"/> response.
     /// </summary>
     /// <param name="modelState">The <see cref="ModelStateDictionary" /> containing errors to be returned to the client.</param>
     /// <returns>The created <see cref="ConflictObjectResult"/> for the response.</returns>
@@ -1883,13 +1834,34 @@ public abstract class ControllerBase
     /// <param name="title">The value for <see cref="ProblemDetails.Title" />.</param>
     /// <param name="type">The value for <see cref="ProblemDetails.Type" />.</param>
     /// <returns>The created <see cref="ObjectResult"/> for the response.</returns>
+    //  8.0 BACKCOMPAT OVERLOAD -- DO NOT TOUCH
+    [NonAction]
+    public virtual ObjectResult Problem(
+        string? detail,
+        string? instance,
+        int? statusCode,
+        string? title,
+        string? type)
+        => Problem(detail, instance, statusCode, title, type, extensions: null);
+
+    /// <summary>
+    /// Creates an <see cref="ObjectResult"/> that produces a <see cref="ProblemDetails"/> response.
+    /// </summary>
+    /// <param name="statusCode">The value for <see cref="ProblemDetails.Status" />.</param>
+    /// <param name="detail">The value for <see cref="ProblemDetails.Detail" />.</param>
+    /// <param name="instance">The value for <see cref="ProblemDetails.Instance" />.</param>
+    /// <param name="title">The value for <see cref="ProblemDetails.Title" />.</param>
+    /// <param name="type">The value for <see cref="ProblemDetails.Type" />.</param>
+    /// <param name="extensions">The value for <see cref="ProblemDetails.Extensions" />.</param>
+    /// <returns>The created <see cref="ObjectResult"/> for the response.</returns>
     [NonAction]
     public virtual ObjectResult Problem(
         string? detail = null,
         string? instance = null,
         int? statusCode = null,
         string? title = null,
-        string? type = null)
+        string? type = null,
+        IDictionary<string, object?>? extensions = null)
     {
         ProblemDetails problemDetails;
         if (ProblemDetailsFactory == null)
@@ -1915,6 +1887,14 @@ public abstract class ControllerBase
                 instance: instance);
         }
 
+        if (extensions is not null)
+        {
+            foreach (var extension in extensions)
+            {
+                problemDetails.Extensions.Add(extension);
+            }
+        }
+
         return new ObjectResult(problemDetails)
         {
             StatusCode = problemDetails.Status
@@ -1922,17 +1902,14 @@ public abstract class ControllerBase
     }
 
     /// <summary>
-    /// Creates an <see cref="BadRequestObjectResult"/> that produces a <see cref="StatusCodes.Status400BadRequest"/> response.
+    /// Creates a <see cref="BadRequestObjectResult"/> that produces a <see cref="StatusCodes.Status400BadRequest"/> response.
     /// </summary>
     /// <returns>The created <see cref="BadRequestObjectResult"/> for the response.</returns>
     [NonAction]
     [DefaultStatusCode(StatusCodes.Status400BadRequest)]
     public virtual ActionResult ValidationProblem([ActionResultObjectValue] ValidationProblemDetails descriptor)
     {
-        if (descriptor == null)
-        {
-            throw new ArgumentNullException(nameof(descriptor));
-        }
+        ArgumentNullException.ThrowIfNull(descriptor);
 
         return new BadRequestObjectResult(descriptor);
     }
@@ -1970,6 +1947,31 @@ public abstract class ControllerBase
     /// <param name="modelStateDictionary">The <see cref="ModelStateDictionary"/>.
     /// When <see langword="null"/> uses <see cref="ModelState"/>.</param>
     /// <returns>The created <see cref="ActionResult"/> for the response.</returns>
+    // 8.0 BACKCOMPAT OVERLOAD -- DO NOT TOUCH
+    [NonAction]
+    [DefaultStatusCode(StatusCodes.Status400BadRequest)]
+    public virtual ActionResult ValidationProblem(
+        string? detail,
+        string? instance,
+        int? statusCode,
+        string? title,
+        string? type,
+        [ActionResultObjectValue] ModelStateDictionary? modelStateDictionary)
+        => ValidationProblem(detail, instance, statusCode, title, type, modelStateDictionary, extensions: null);
+
+    /// <summary>
+    /// Creates an <see cref="ActionResult"/> that produces a <see cref="StatusCodes.Status400BadRequest"/> response
+    /// with a <see cref="ValidationProblemDetails"/> value.
+    /// </summary>
+    /// <param name="detail">The value for <see cref="ProblemDetails.Detail" />.</param>
+    /// <param name="instance">The value for <see cref="ProblemDetails.Instance" />.</param>
+    /// <param name="statusCode">The status code.</param>
+    /// <param name="title">The value for <see cref="ProblemDetails.Title" />.</param>
+    /// <param name="type">The value for <see cref="ProblemDetails.Type" />.</param>
+    /// <param name="modelStateDictionary">The <see cref="ModelStateDictionary"/>.
+    /// When <see langword="null"/> uses <see cref="ModelState"/>.</param>
+    /// <param name="extensions">The value for <see cref="ProblemDetails.Extensions" />.</param>
+    /// <returns>The created <see cref="ActionResult"/> for the response.</returns>
     [NonAction]
     [DefaultStatusCode(StatusCodes.Status400BadRequest)]
     public virtual ActionResult ValidationProblem(
@@ -1978,7 +1980,8 @@ public abstract class ControllerBase
         int? statusCode = null,
         string? title = null,
         string? type = null,
-        [ActionResultObjectValue] ModelStateDictionary? modelStateDictionary = null)
+        [ActionResultObjectValue] ModelStateDictionary? modelStateDictionary = null,
+        IDictionary<string, object?>? extensions = null)
     {
         modelStateDictionary ??= ModelState;
 
@@ -1997,7 +2000,7 @@ public abstract class ControllerBase
         }
         else
         {
-            validationProblem = ProblemDetailsFactory?.CreateValidationProblemDetails(
+            validationProblem = ProblemDetailsFactory.CreateValidationProblemDetails(
                 HttpContext,
                 modelStateDictionary,
                 statusCode: statusCode,
@@ -2005,6 +2008,14 @@ public abstract class ControllerBase
                 type: type,
                 detail: detail,
                 instance: instance);
+        }
+
+        if (extensions is not null)
+        {
+            foreach (var extension in extensions)
+            {
+                validationProblem.Extensions.Add(extension);
+            }
         }
 
         if (validationProblem is { Status: 400 })
@@ -2021,7 +2032,7 @@ public abstract class ControllerBase
 
     /// <summary>
     /// Creates a <see cref="CreatedResult"/> object that produces a <see cref="StatusCodes.Status201Created"/> response.
-    /// </summary>   
+    /// </summary>
     /// <returns>The created <see cref="CreatedResult"/> for the response.</returns>
     [NonAction]
     public virtual CreatedResult Created()
@@ -2122,7 +2133,7 @@ public abstract class ControllerBase
         => new CreatedAtRouteResult(routeName, routeValues, value);
 
     /// <summary>
-    /// Creates a <see cref="AcceptedResult"/> object that produces an <see cref="StatusCodes.Status202Accepted"/> response.
+    /// Creates an <see cref="AcceptedResult"/> object that produces a <see cref="StatusCodes.Status202Accepted"/> response.
     /// </summary>
     /// <returns>The created <see cref="AcceptedResult"/> for the response.</returns>
     [NonAction]
@@ -2130,7 +2141,7 @@ public abstract class ControllerBase
         => new AcceptedResult();
 
     /// <summary>
-    /// Creates a <see cref="AcceptedResult"/> object that produces an <see cref="StatusCodes.Status202Accepted"/> response.
+    /// Creates an <see cref="AcceptedResult"/> object that produces a <see cref="StatusCodes.Status202Accepted"/> response.
     /// </summary>
     /// <param name="value">The optional content value to format in the entity body; may be null.</param>
     /// <returns>The created <see cref="AcceptedResult"/> for the response.</returns>
@@ -2139,7 +2150,7 @@ public abstract class ControllerBase
         => new AcceptedResult(location: null, value: value);
 
     /// <summary>
-    /// Creates a <see cref="AcceptedResult"/> object that produces an <see cref="StatusCodes.Status202Accepted"/> response.
+    /// Creates an <see cref="AcceptedResult"/> object that produces a <see cref="StatusCodes.Status202Accepted"/> response.
     /// </summary>
     /// <param name="uri">The optional URI with the location at which the status of requested content can be monitored.
     /// May be null.</param>
@@ -2147,16 +2158,13 @@ public abstract class ControllerBase
     [NonAction]
     public virtual AcceptedResult Accepted(Uri uri)
     {
-        if (uri == null)
-        {
-            throw new ArgumentNullException(nameof(uri));
-        }
+        ArgumentNullException.ThrowIfNull(uri);
 
         return new AcceptedResult(locationUri: uri, value: null);
     }
 
     /// <summary>
-    /// Creates a <see cref="AcceptedResult"/> object that produces an <see cref="StatusCodes.Status202Accepted"/> response.
+    /// Creates an <see cref="AcceptedResult"/> object that produces a <see cref="StatusCodes.Status202Accepted"/> response.
     /// </summary>
     /// <param name="uri">The optional URI with the location at which the status of requested content can be monitored.
     /// May be null.</param>
@@ -2166,7 +2174,7 @@ public abstract class ControllerBase
         => new AcceptedResult(location: uri, value: null);
 
     /// <summary>
-    /// Creates a <see cref="AcceptedResult"/> object that produces an <see cref="StatusCodes.Status202Accepted"/> response.
+    /// Creates an <see cref="AcceptedResult"/> object that produces a <see cref="StatusCodes.Status202Accepted"/> response.
     /// </summary>
     /// <param name="uri">The URI with the location at which the status of requested content can be monitored.</param>
     /// <param name="value">The optional content value to format in the entity body; may be null.</param>
@@ -2176,7 +2184,7 @@ public abstract class ControllerBase
         => new AcceptedResult(uri, value);
 
     /// <summary>
-    /// Creates a <see cref="AcceptedResult"/> object that produces an <see cref="StatusCodes.Status202Accepted"/> response.
+    /// Creates an <see cref="AcceptedResult"/> object that produces a <see cref="StatusCodes.Status202Accepted"/> response.
     /// </summary>
     /// <param name="uri">The URI with the location at which the status of requested content can be monitored.</param>
     /// <param name="value">The optional content value to format in the entity body; may be null.</param>
@@ -2184,16 +2192,13 @@ public abstract class ControllerBase
     [NonAction]
     public virtual AcceptedResult Accepted(Uri uri, [ActionResultObjectValue] object? value)
     {
-        if (uri == null)
-        {
-            throw new ArgumentNullException(nameof(uri));
-        }
+        ArgumentNullException.ThrowIfNull(uri);
 
         return new AcceptedResult(locationUri: uri, value: value);
     }
 
     /// <summary>
-    /// Creates a <see cref="AcceptedAtActionResult"/> object that produces an <see cref="StatusCodes.Status202Accepted"/> response.
+    /// Creates an <see cref="AcceptedAtActionResult"/> object that produces a <see cref="StatusCodes.Status202Accepted"/> response.
     /// </summary>
     /// <param name="actionName">The name of the action to use for generating the URL.</param>
     /// <returns>The created <see cref="AcceptedAtActionResult"/> for the response.</returns>
@@ -2202,7 +2207,7 @@ public abstract class ControllerBase
         => AcceptedAtAction(actionName, routeValues: null, value: null);
 
     /// <summary>
-    /// Creates a <see cref="AcceptedAtActionResult"/> object that produces an <see cref="StatusCodes.Status202Accepted"/> response.
+    /// Creates an <see cref="AcceptedAtActionResult"/> object that produces a <see cref="StatusCodes.Status202Accepted"/> response.
     /// </summary>
     /// <param name="actionName">The name of the action to use for generating the URL.</param>
     /// <param name="controllerName">The name of the controller to use for generating the URL.</param>
@@ -2212,7 +2217,7 @@ public abstract class ControllerBase
         => AcceptedAtAction(actionName, controllerName, routeValues: null, value: null);
 
     /// <summary>
-    /// Creates a <see cref="AcceptedAtActionResult"/> object that produces an <see cref="StatusCodes.Status202Accepted"/> response.
+    /// Creates an <see cref="AcceptedAtActionResult"/> object that produces a <see cref="StatusCodes.Status202Accepted"/> response.
     /// </summary>
     /// <param name="actionName">The name of the action to use for generating the URL.</param>
     /// <param name="value">The optional content value to format in the entity body; may be null.</param>
@@ -2222,7 +2227,7 @@ public abstract class ControllerBase
         => AcceptedAtAction(actionName, routeValues: null, value: value);
 
     /// <summary>
-    /// Creates a <see cref="AcceptedAtActionResult"/> object that produces an <see cref="StatusCodes.Status202Accepted"/> response.
+    /// Creates an <see cref="AcceptedAtActionResult"/> object that produces a <see cref="StatusCodes.Status202Accepted"/> response.
     /// </summary>
     /// <param name="actionName">The name of the action to use for generating the URL.</param>
     /// <param name="controllerName">The name of the controller to use for generating the URL.</param>
@@ -2233,7 +2238,7 @@ public abstract class ControllerBase
         => AcceptedAtAction(actionName, controllerName, routeValues, value: null);
 
     /// <summary>
-    /// Creates a <see cref="AcceptedAtActionResult"/> object that produces an <see cref="StatusCodes.Status202Accepted"/> response.
+    /// Creates an <see cref="AcceptedAtActionResult"/> object that produces a <see cref="StatusCodes.Status202Accepted"/> response.
     /// </summary>
     /// <param name="actionName">The name of the action to use for generating the URL.</param>
     /// <param name="routeValues">The route data to use for generating the URL.</param>
@@ -2244,7 +2249,7 @@ public abstract class ControllerBase
         => AcceptedAtAction(actionName, controllerName: null, routeValues: routeValues, value: value);
 
     /// <summary>
-    /// Creates a <see cref="AcceptedAtActionResult"/> object that produces an <see cref="StatusCodes.Status202Accepted"/> response.
+    /// Creates an <see cref="AcceptedAtActionResult"/> object that produces a <see cref="StatusCodes.Status202Accepted"/> response.
     /// </summary>
     /// <param name="actionName">The name of the action to use for generating the URL.</param>
     /// <param name="controllerName">The name of the controller to use for generating the URL.</param>
@@ -2260,7 +2265,7 @@ public abstract class ControllerBase
         => new AcceptedAtActionResult(actionName, controllerName, routeValues, value);
 
     /// <summary>
-    /// Creates a <see cref="AcceptedAtRouteResult"/> object that produces an <see cref="StatusCodes.Status202Accepted"/> response.
+    /// Creates an <see cref="AcceptedAtRouteResult"/> object that produces a <see cref="StatusCodes.Status202Accepted"/> response.
     /// </summary>
     /// <param name="routeValues">The route data to use for generating the URL.</param>
     /// <returns>The created <see cref="AcceptedAtRouteResult"/> for the response.</returns>
@@ -2269,7 +2274,7 @@ public abstract class ControllerBase
         => AcceptedAtRoute(routeName: null, routeValues: routeValues, value: null);
 
     /// <summary>
-    /// Creates a <see cref="AcceptedAtRouteResult"/> object that produces an <see cref="StatusCodes.Status202Accepted"/> response.
+    /// Creates an <see cref="AcceptedAtRouteResult"/> object that produces a <see cref="StatusCodes.Status202Accepted"/> response.
     /// </summary>
     /// <param name="routeName">The name of the route to use for generating the URL.</param>
     /// <returns>The created <see cref="AcceptedAtRouteResult"/> for the response.</returns>
@@ -2278,7 +2283,7 @@ public abstract class ControllerBase
         => AcceptedAtRoute(routeName, routeValues: null, value: null);
 
     /// <summary>
-    /// Creates a <see cref="AcceptedAtRouteResult"/> object that produces an <see cref="StatusCodes.Status202Accepted"/> response.
+    /// Creates an <see cref="AcceptedAtRouteResult"/> object that produces a <see cref="StatusCodes.Status202Accepted"/> response.
     /// </summary>
     /// <param name="routeName">The name of the route to use for generating the URL.</param>
     ///<param name="routeValues">The route data to use for generating the URL.</param>
@@ -2288,7 +2293,7 @@ public abstract class ControllerBase
         => AcceptedAtRoute(routeName, routeValues, value: null);
 
     /// <summary>
-    /// Creates a <see cref="AcceptedAtRouteResult"/> object that produces an <see cref="StatusCodes.Status202Accepted"/> response.
+    /// Creates an <see cref="AcceptedAtRouteResult"/> object that produces a <see cref="StatusCodes.Status202Accepted"/> response.
     /// </summary>
     /// <param name="routeValues">The route data to use for generating the URL.</param>
     /// <param name="value">The optional content value to format in the entity body; may be null.</param>
@@ -2298,7 +2303,7 @@ public abstract class ControllerBase
         => AcceptedAtRoute(routeName: null, routeValues: routeValues, value: value);
 
     /// <summary>
-    /// Creates a <see cref="AcceptedAtRouteResult"/> object that produces an <see cref="StatusCodes.Status202Accepted"/> response.
+    /// Creates an <see cref="AcceptedAtRouteResult"/> object that produces a <see cref="StatusCodes.Status202Accepted"/> response.
     /// </summary>
     /// <param name="routeName">The name of the route to use for generating the URL.</param>
     /// <param name="routeValues">The route data to use for generating the URL.</param>
@@ -2521,10 +2526,7 @@ public abstract class ControllerBase
         TModel model)
         where TModel : class
     {
-        if (model == null)
-        {
-            throw new ArgumentNullException(nameof(model));
-        }
+        ArgumentNullException.ThrowIfNull(model);
 
         return TryUpdateModelAsync(model, prefix: string.Empty);
     }
@@ -2544,15 +2546,8 @@ public abstract class ControllerBase
         string prefix)
         where TModel : class
     {
-        if (model == null)
-        {
-            throw new ArgumentNullException(nameof(model));
-        }
-
-        if (prefix == null)
-        {
-            throw new ArgumentNullException(nameof(prefix));
-        }
+        ArgumentNullException.ThrowIfNull(model);
+        ArgumentNullException.ThrowIfNull(prefix);
 
         var (success, valueProvider) = await CompositeValueProvider.TryCreateAsync(ControllerContext, ControllerContext.ValueProviderFactories);
         if (!success)
@@ -2580,20 +2575,9 @@ public abstract class ControllerBase
         IValueProvider valueProvider)
         where TModel : class
     {
-        if (model == null)
-        {
-            throw new ArgumentNullException(nameof(model));
-        }
-
-        if (prefix == null)
-        {
-            throw new ArgumentNullException(nameof(prefix));
-        }
-
-        if (valueProvider == null)
-        {
-            throw new ArgumentNullException(nameof(valueProvider));
-        }
+        ArgumentNullException.ThrowIfNull(model);
+        ArgumentNullException.ThrowIfNull(prefix);
+        ArgumentNullException.ThrowIfNull(valueProvider);
 
         return ModelBindingHelper.TryUpdateModelAsync(
             model,
@@ -2623,15 +2607,8 @@ public abstract class ControllerBase
         params Expression<Func<TModel, object?>>[] includeExpressions)
        where TModel : class
     {
-        if (model == null)
-        {
-            throw new ArgumentNullException(nameof(model));
-        }
-
-        if (includeExpressions == null)
-        {
-            throw new ArgumentNullException(nameof(includeExpressions));
-        }
+        ArgumentNullException.ThrowIfNull(model);
+        ArgumentNullException.ThrowIfNull(includeExpressions);
 
         var (success, valueProvider) = await CompositeValueProvider.TryCreateAsync(ControllerContext, ControllerContext.ValueProviderFactories);
         if (!success)
@@ -2667,15 +2644,8 @@ public abstract class ControllerBase
         Func<ModelMetadata, bool> propertyFilter)
         where TModel : class
     {
-        if (model == null)
-        {
-            throw new ArgumentNullException(nameof(model));
-        }
-
-        if (propertyFilter == null)
-        {
-            throw new ArgumentNullException(nameof(propertyFilter));
-        }
+        ArgumentNullException.ThrowIfNull(model);
+        ArgumentNullException.ThrowIfNull(propertyFilter);
 
         var (success, valueProvider) = await CompositeValueProvider.TryCreateAsync(ControllerContext, ControllerContext.ValueProviderFactories);
         if (!success)
@@ -2714,20 +2684,9 @@ public abstract class ControllerBase
         params Expression<Func<TModel, object?>>[] includeExpressions)
        where TModel : class
     {
-        if (model == null)
-        {
-            throw new ArgumentNullException(nameof(model));
-        }
-
-        if (valueProvider == null)
-        {
-            throw new ArgumentNullException(nameof(valueProvider));
-        }
-
-        if (includeExpressions == null)
-        {
-            throw new ArgumentNullException(nameof(includeExpressions));
-        }
+        ArgumentNullException.ThrowIfNull(model);
+        ArgumentNullException.ThrowIfNull(valueProvider);
+        ArgumentNullException.ThrowIfNull(includeExpressions);
 
         return ModelBindingHelper.TryUpdateModelAsync(
             model,
@@ -2759,20 +2718,9 @@ public abstract class ControllerBase
         Func<ModelMetadata, bool> propertyFilter)
         where TModel : class
     {
-        if (model == null)
-        {
-            throw new ArgumentNullException(nameof(model));
-        }
-
-        if (valueProvider == null)
-        {
-            throw new ArgumentNullException(nameof(valueProvider));
-        }
-
-        if (propertyFilter == null)
-        {
-            throw new ArgumentNullException(nameof(propertyFilter));
-        }
+        ArgumentNullException.ThrowIfNull(model);
+        ArgumentNullException.ThrowIfNull(valueProvider);
+        ArgumentNullException.ThrowIfNull(propertyFilter);
 
         return ModelBindingHelper.TryUpdateModelAsync(
             model,
@@ -2800,15 +2748,8 @@ public abstract class ControllerBase
         Type modelType,
         string prefix)
     {
-        if (model == null)
-        {
-            throw new ArgumentNullException(nameof(model));
-        }
-
-        if (modelType == null)
-        {
-            throw new ArgumentNullException(nameof(modelType));
-        }
+        ArgumentNullException.ThrowIfNull(model);
+        ArgumentNullException.ThrowIfNull(modelType);
 
         var (success, valueProvider) = await CompositeValueProvider.TryCreateAsync(ControllerContext, ControllerContext.ValueProviderFactories);
         if (!success)
@@ -2846,25 +2787,10 @@ public abstract class ControllerBase
         IValueProvider valueProvider,
         Func<ModelMetadata, bool> propertyFilter)
     {
-        if (model == null)
-        {
-            throw new ArgumentNullException(nameof(model));
-        }
-
-        if (modelType == null)
-        {
-            throw new ArgumentNullException(nameof(modelType));
-        }
-
-        if (valueProvider == null)
-        {
-            throw new ArgumentNullException(nameof(valueProvider));
-        }
-
-        if (propertyFilter == null)
-        {
-            throw new ArgumentNullException(nameof(propertyFilter));
-        }
+        ArgumentNullException.ThrowIfNull(model);
+        ArgumentNullException.ThrowIfNull(modelType);
+        ArgumentNullException.ThrowIfNull(valueProvider);
+        ArgumentNullException.ThrowIfNull(propertyFilter);
 
         return ModelBindingHelper.TryUpdateModelAsync(
             model,
@@ -2887,10 +2813,7 @@ public abstract class ControllerBase
     public virtual bool TryValidateModel(
         object model)
     {
-        if (model == null)
-        {
-            throw new ArgumentNullException(nameof(model));
-        }
+        ArgumentNullException.ThrowIfNull(model);
 
         return TryValidateModel(model, prefix: null);
     }
@@ -2907,10 +2830,7 @@ public abstract class ControllerBase
         object model,
         string? prefix)
     {
-        if (model == null)
-        {
-            throw new ArgumentNullException(nameof(model));
-        }
+        ArgumentNullException.ThrowIfNull(model);
 
         ObjectValidator.Validate(
             ControllerContext,

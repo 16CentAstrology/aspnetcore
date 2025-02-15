@@ -50,17 +50,19 @@ public sealed partial class Utf8ContentHttpResult : IResult, IStatusCodeHttpResu
     {
         ArgumentNullException.ThrowIfNull(httpContext);
 
-        // Creating the logger with a string to preserve the category after the refactoring.
-        var loggerFactory = httpContext.RequestServices.GetRequiredService<ILoggerFactory>();
-        var logger = loggerFactory.CreateLogger("Microsoft.AspNetCore.Http.Result.Utf8ContentHttpResult");
-
         if (StatusCode is { } statusCode)
         {
+            // Creating the logger with a string to preserve the category after the refactoring.
+            // It's important to only access RequestServices & create the logger if we're actually going to use it
+            // to avoid the costs when they're not necessary.
+            var loggerFactory = httpContext.RequestServices.GetRequiredService<ILoggerFactory>();
+            var logger = loggerFactory.CreateLogger("Microsoft.AspNetCore.Http.Result.Utf8ContentHttpResult");
+
             HttpResultsHelper.Log.WritingResultAsStatusCode(logger, statusCode);
             httpContext.Response.StatusCode = statusCode;
         }
 
-        httpContext.Response.ContentType = ContentType ?? HttpResultsHelper.DefaultContentType;
+        httpContext.Response.ContentType = ContentType ?? ContentTypeConstants.DefaultContentType;
 
         httpContext.Response.ContentLength = ResponseContent.Length;
         return httpContext.Response.Body.WriteAsync(ResponseContent).AsTask();

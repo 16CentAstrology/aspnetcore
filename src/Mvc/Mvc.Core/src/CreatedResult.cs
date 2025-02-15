@@ -17,11 +17,12 @@ public class CreatedResult : ObjectResult
     private string? _location;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="CreatedResult"/> class 
-    /// </summary>  
+    /// Initializes a new instance of the <see cref="CreatedResult"/> class
+    /// </summary>
     public CreatedResult()
         : base(null)
     {
+        StatusCode = DefaultStatusCode;
     }
 
     /// <summary>
@@ -77,10 +78,7 @@ public class CreatedResult : ObjectResult
     /// <inheritdoc />
     public override void OnFormatting(ActionContext context)
     {
-        if (context == null)
-        {
-            throw new ArgumentNullException(nameof(context));
-        }
+        ArgumentNullException.ThrowIfNull(context);
 
         base.OnFormatting(context);
 

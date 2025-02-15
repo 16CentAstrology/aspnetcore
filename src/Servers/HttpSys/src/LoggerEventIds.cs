@@ -53,4 +53,10 @@ internal static class LoggerEventIds
     public const int ListenerDisposing = 46;
     public const int RequestValidationFailed = 47;
     public const int CreateDisconnectTokenError = 48;
+    public const int RequestAborted = 49;
+    public const int AcceptSetResultFailed = 50;
+    public const int AcceptSetExpectationMismatch = 51;
+    public const int AcceptCancelExpectationMismatch = 52;
+    public const int AcceptObserveExpectationMismatch = 53;
+    public const int RequestParsingError = 54;
 }
